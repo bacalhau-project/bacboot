@@ -46,7 +46,7 @@ def print_intro_screen():
     print_wrapped("This is an installer/bootstrapper for deploying Bacalhau on a single computer, group of computers or across diverse infrastructure. Whether you just want to install the Bacalhau client, or you want to install a Bacalhau node or cluster, BacBoot is the fastest and easiest path to doing so.")
     print("\nWhat would you like to do?")
     print("""
-1) Install Bacalhau
+1) Install or upgrade Bacalhau
 2) Verify an installation (UNIMPLEMENTED)
 3) Find out more about BacBoot
 4) Check if my system(s) are supported by BacBoot (UNIMPLEMENTED)
@@ -60,6 +60,8 @@ def begin_questionnaire():
     print("Let's get started! 🚀")
     print()
     print_wrapped("First, we need to know what you want to do. Do you want to install the Bacalhau client, the Bacalhau node, or both?")
+    print()
+    print("(If you are upgrading Bacalhau, you can just run this install step and it will upgrade automatically!)")
     print()
     print("""
 1) Install the Bacalhau client
@@ -76,6 +78,15 @@ def begin_questionnaire():
         print("(If you're confused or don't know what to do here, just press ENTER!)")
         version = input("Enter a version number or press [ENTER] to proceed: ")
         if version == "":
+            # Set bacalhau_version to "latest" as we do not actually have a custom version specified.
+            bacalhau_version = "latest"
+            # Let's make sure that we undo any changes to the overrides file that might have been made previously.
+            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
+            if os.path.exists(overrides_file):
+                # Modify the overrides file to set the bacalhau_version variable
+                command = f"sed -i '' -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file}"
+                os.system(command)
+            # Now that we have applied the correct overrides, let's proceed!
             run_ansible_playbook("bacalhau-client.yml")
         else:
             # Modify /tmp/bacalhau-ansible/vars/overrides.yml to install a specific version of Bacalhau
