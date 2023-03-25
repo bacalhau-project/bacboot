@@ -12,4 +12,6 @@ Follow the prompts and have a go! It's currently capable of installing and upgra
 
 Only Ubuntu 22.04 has been officially tested. Debian 11 should work, as should anything reasonably Debian-ish. RHEL/CentOS and RHEL-alike distros are not yet supported but support *is* planned for those.
 
+You will need python3 installed and a working `apt` install - that's literally it.
+
 Enjoy!
