@@ -82,12 +82,12 @@ def begin_questionnaire():
             # We'll do that by setting the variable "bacalhau_version" to the version number the user entered.
             overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
             bacalhau_version = version.strip()  # Remove any leading/trailing whitespace
-            
+
             if not os.path.exists(overrides_file):
                 # If the overrides file does not exist, copy overrides.yml.dist to create it
                 command = f"cp /tmp/bacalhau-ansible/vars/overrides.yml.dist {overrides_file}"
                 os.system(command)
-                
+
             # Modify the overrides file to set the bacalhau_version variable
             command = f"sed -i '' -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file}"
             os.system(command)
@@ -149,38 +149,38 @@ def run_ansible_playbook(playbook):
             return_to_menu()
         # Check that the repository is up to date
         try:
-            # Check if there are any changes to pull
-            output = subprocess.check_output(["git", "fetch"]).decode().strip()
-            if "fatal" in output:
-                print("Error checking Git repository status: ", output)
-                return_to_menu()
-            else:
-                output = subprocess.check_output(["git", "status", "-sb"]).decode().strip()
-                if "...behind" in output:
-                    print("The repository is not up to date! Please check it and try again.")
-                    print("Actually, we'll try to update it for you now - just press [ENTER] to let us know that's okay.")
-                    print("(Or if you want to run it anyways with the current version, type current and press [ENTER].)")
-                    print("Alternatively, enter anything else and we will abort entirely.")
-                    print()
-                    print("If you're confused or don't know what to do here, just press [ENTER]!")
-                    # Check if the user wants to update the playbook
-                    choice = input()
-                    if choice == "":
-                        print("Let's update it for you automatically.")
-                        # Update the playbook and make sure we get a clean return code.
-                        if subprocess.run(["git", "pull"], stdout=subprocess.DEVNULL).returncode != 0:
-                            print("Something went wrong while trying to update the playbook. It's probably not safe for us to continue, so we won't.")
-                            print("Please check it and try again.")
-                            return_to_menu()
-                        print("Updated successfully!")
-                        print("Let's continue!")
-                    elif choice == "current":
-                        print("Okay, we'll run it anyways with the current version.")
-                    else:
-                        print("Okay, we'll abort entirely.")
+            # Check if the local branch is behind the remote branch using 'git remote show origin'
+            remote_output = subprocess.check_output(["git", "remote", "show", "origin"]).decode().strip()
+            is_behind = "local out of date" in remote_output
+
+            # Check if the local branch is behind the remote branch
+            output = subprocess.check_output(["git", "diff", "--name-only", "@{u}"]).decode().strip()
+
+            if is_behind or output:
+                print("The repository is not up to date! Please check it and try again.")
+                print("Actually, we'll try to update it for you now - just press [ENTER] to let us know that's okay.")
+                print("(Or if you want to run it anyways with the current version, type current and press [ENTER].)")
+                print("Alternatively, enter anything else and we will abort entirely.")
+                print()
+                print("If you're confused or don't know what to do here, just press [ENTER]!")
+                # Check if the user wants to update the playbook
+                choice = input()
+                if choice == "":
+                    print("Let's update it for you automatically.")
+                    # Update the playbook and make sure we get a clean return code.
+                    if subprocess.run(["git", "pull"], stdout=subprocess.DEVNULL).returncode != 0:
+                        print("Something went wrong while trying to update the playbook. It's probably not safe for us to continue, so we won't.")
+                        print("Please check it and try again.")
                         return_to_menu()
+                    print("Updated successfully!")
+                    print("Let's continue!")
+                elif choice == "current":
+                    print("Okay, we'll run it anyways with the current version.")
                 else:
-                    print("The repository is up to date!")
+                    print("Okay, we'll abort entirely.")
+                    return_to_menu()
+            else:
+                print("The repository is up to date!")
         except subprocess.CalledProcessError as e:
             print(f"Error checking Git repository status: {e}")
             return_to_menu()
@@ -217,6 +217,9 @@ def run_ansible_playbook(playbook):
                 print("We couldn't run the playbook. If you are accessing a remote machine, please check your network connection and permissions and try again.")
                 print("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
                 print("and that you have sudo/become permissions if needed.")
+                print()
+                print("(If you are feeling particularly adventurous - and be careful if you are - run the playbook by hand to see what's wrong.")
+                print("Feel free to ask for help if you take this route! 🙏)")
                 return_to_menu()
             break
         elif choice == "n":
@@ -224,6 +227,9 @@ def run_ansible_playbook(playbook):
                 print("We couldn't run the playbook. If you are accessing a remote machine, please check your network connection and permissions and try again.")
                 print("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
                 print("and that you have sudo/become permissions if needed.")
+                print()
+                print("(If you are feeling particularly adventurous - and be careful if you are - run the playbook by hand to see what's wrong.")
+                print("Feel free to ask for help if you take this route! 🙏)")
                 return_to_menu()
             break
         else:
@@ -298,7 +304,10 @@ def install_ansible():
                 elif choice == "q" or choice == "n":
                     print("Okay, not installing Ansible. We can't proceed without it, so we'll simply return you to the main menu now 😃")
                     return_to_menu()
-            return_to_menu()
+            else:
+                print("Invalid input. Please try again, or enter 'q' to quit without making any further changes.")
+                print("We'll try installing Ansible again from the beginning, thanks for your patience!")
+                install_ansible()
     elif choice == "2":
         print("Installing Ansible using your package manager...")
         install_ansible_using_package_manager()
