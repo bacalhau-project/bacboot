@@ -730,6 +730,12 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                 verify_bacalhau_installation(args)
             else:
                 logging.warning("Skipping verification...")
+            if args.remove_ansible:
+                logging.info("Removing Ansible as requested after successful actions.")
+                uninstall_ansible(args)
+            if args.remove_pip3:
+                logging.info("Removing pip3 as requested after successful actions.")
+                uninstall_pip3(args)
             # Exit the loop.
             break
 
