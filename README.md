@@ -1,7 +1,9 @@
-# bacboot
+# bacboot (EXPERIMENTAL!)
 A short, snappy and powerful installer for Bacalhau. Bacalhau Bootstrapper!
 
 In a hurry and just want to install Bacalhau on your machine?
+
+⚠️☢ This is not yet production ready. Follow the official Bacalhau documentation if you just want to install Bacalhau. Otherwise, read on! ☢⚠️
 
 `curl -sL https://raw.githubusercontent.com/Zorlin/bacboot/main/bacboot.py | python3 - --install --silent --ask-become-pass` 
 
