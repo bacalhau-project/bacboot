@@ -5,7 +5,7 @@ In a hurry and just want to install Bacalhau on your machine?
 
 `curl -sL https://raw.githubusercontent.com/Zorlin/bacboot/main/bacboot.py | python3 - --install --silent --ask-become-pass` 
 
-(or the same without --ask-become-pass if you have passwordless sudo or will be deploying as root)
+(or the same without `--ask-become-pass` if you have passwordless sudo or will be deploying as root)
 
 ## Quick start
 Want to run BacBoot and try it out? It's pretty simple! Just do the following:
