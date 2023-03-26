@@ -84,7 +84,7 @@ def begin_questionnaire():
             overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
             if os.path.exists(overrides_file):
                 # Modify the overrides file to set the bacalhau_version variable
-                command = f"sed -i '' -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file}"
+                command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
                 os.system(command)
             # Now that we have applied the correct overrides, let's proceed!
             run_ansible_playbook("bacalhau-client.yml")
@@ -100,7 +100,7 @@ def begin_questionnaire():
                 os.system(command)
 
             # Modify the overrides file to set the bacalhau_version variable
-            command = f"sed -i '' -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file}"
+            command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
             os.system(command)
             # Now that we have applied the correct overrides, let's proceed!
             run_ansible_playbook("bacalhau-client.yml")
