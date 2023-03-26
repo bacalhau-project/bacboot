@@ -648,6 +648,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
     )
     parser.add_argument("-a", "--unattended", help="Run in unattended mode, and make reasonable decisions without user input", action="store_true")
     parser.add_argument("-s", "--silent", help="Run in silent mode, suppressing all output except warnings, errors, and a report at the end. Implies --unattended.", action="store_true")
+    parser.add_argument("--dry-run", help="[UNIMPLEMENTED] Dry-run mode. Note that this WILL install Ansible on the machine running BacBoot. Can be combined with --remove-ansible.")
     parser.add_argument("--truly-silent", help="Run in truly silent mode, only outputting errors or prompts needed for authentication such as sudo. Implies --silent.", action="store_true")
     parser.add_argument("-m", "--method", help="Specify the installation method to use. Default: Ansible.", choices=["ansible", "cloud", "docker", "direct"])
     parser.add_argument("--skip-verification", help="Always skip verification of the installed or upgraded components.", action="store_true")
@@ -675,6 +676,8 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
         logging.basicConfig(level=logging.INFO, format='%(message)s')
 
     while True:
+        # Print the intro screen. Does nothing in silent modes.
+        print_intro_screen()
         # Unconditionally define choice, as NoneType by default.
         choice = None
         # Detect if we have automatic actions to take, if we do don't ask the user for input.
@@ -685,6 +688,14 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
             if args.install is None and args.uninstall is None and args.verify is None:
                 logging.error("No actions specified. Please specify an action to take in unattended mode.")
                 sys.exit(1)
+        else:
+            # Prompt the user for input if we're not running in unattended mode.
+            choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-4, q): ").strip()
+
+        # Checks if the user wants to bail.
+        if choice is not None and choice.lower() == 'q':
+            logging.error("Quitting...")
+            sys.exit(1)
         if choice == '1' or args.install:
             if args.install:
                 # Take the install choice from the command line argument
@@ -712,7 +723,6 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
             else:
                 logging.error("Invalid choice of install method. Please try again.")
             # If we made it this far, we should have a working installation of Bacalhau.
-
             if args.unattended:
                 should_verify = not args.skip_verification
             else:
