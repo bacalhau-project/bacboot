@@ -6,13 +6,6 @@ import unicodedata
 import argparse
 import logging
 
-# Log messages with different log levels
-# logging.debug('This is a debug message')
-# logging.info('This is an info message')
-# logging.warning('This is a warning message')
-# logging.error('This is an error message')
-# logging.critical('This is a critical message')
-
 # Cruft used to improve autodetection of success and failure states
 EMOJI_RANGES = [
     (0x1F601, 0x1F64F),
