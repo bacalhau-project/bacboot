@@ -264,6 +264,11 @@ def run_ansible_playbook(playbook, args):
             return_to_menu()
         logging.info("Cloned successfully!")
         logging.info("We just pulled this copy, so it's probably legitimate. Future versions will check this more thoroughly!")
+    logging.info("First, we'll run ansible-galaxy and install any required modules...")
+    # Run ansible-galaxy install -r requirements.yml
+    if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
+        logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
+        return_to_menu()
     logging.info("Now, let's run the playbook!")
     logging.info("We'll run it with the following command:")
     logging.info("ansible-playbook -i /tmp/bacalhau-ansible/inventory /tmp/bacalhau-ansible/" + playbook)
