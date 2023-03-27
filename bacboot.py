@@ -350,7 +350,7 @@ def install_using_ansible(args):
             begin_questionnaire(args)
         else:
             logging.warning("We didn't detect an existing Ansible installation. Let's install it now.")
-            install_ansible()
+            install_ansible(args)
             logging.info("Awesome, Ansible was installed successfully! Let's rock! 🎸🪨")
             begin_questionnaire(args)
         # We presumably succeeded, so let's remove Ansible if the user wants us to.
@@ -361,13 +361,13 @@ def install_using_ansible(args):
         if is_ansible_installed:
             begin_questionnaire(args)
         else:
-            install_ansible()
+            install_ansible(args)
             begin_questionnaire(args)
 
     logging.info("")
 
 # Basic installers
-def install_ansible():
+def install_ansible(args):
     logging.info("How would you like to install Ansible?")
     logging.info("""
     1) Install Ansible using pip3
@@ -396,7 +396,7 @@ def install_ansible():
             else:
                 logging.error("Invalid input. Please try again, or enter 'q' to quit without making any further changes.")
                 logging.error("We'll try installing Ansible again from the beginning, thanks for your patience!")
-                install_ansible()
+                install_ansible(args)
     elif choice == "2":
         logging.info("Installing Ansible using your package manager...")
         install_ansible_using_package_manager()
