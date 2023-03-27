@@ -698,6 +698,8 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                     # Use the default installation method if nothing else was specified.
                     install_choice = "ansible"
             else:
+                # Print the installation options and prompt the user for input.
+                print_install_options()
                 install_choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-3, q): ").strip()
 
             if install_choice is not None and install_choice.lower() == 'q':
@@ -747,8 +749,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
             logging.info("Okay, we'll check if Bacalhau works. Do you want to test a client, a node, or both?")
             logging.info("""
     1) Bacalhau client
-    2) Bacalhau node/cluster
-    3) Both
+    2) Bacalhau node/cluster (also tests client)
     """)
             verify_choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-3, q): ").strip()
             # Loop through the menu until the user selects a valid option.
@@ -762,14 +763,15 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                     logging.error("Quitting...")
                     sys.exit(1)
             if verify_choice == '1':
-                verification_result = verify_client()
+                if verify_client():
+                    logging.info("Looking good! You're all set. Enjoy! 🚀")
+                    break
+                else:
+                    logging.error("Verification failed. 🎻😭 Bacalhau may be installed incorrectly. Please try again.")
+
                 logging.info("Looking good! You're all set. Enjoy! 🚀")
                 break
             elif verify_choice == '2':
-                verification_result = verify_node()
-                logging.info("Looking good! You're all set. Enjoy! 🚀")
-                break
-            elif verify_choice == '3':
                 if verify_client() and verify_node():
                     logging.info("Looking good! You're all set. Enjoy! 🚀")
                     break
