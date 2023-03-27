@@ -676,6 +676,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
     parser.add_argument("--remove-pip3", help="Remove pip3 from the system", action="store_true")
     parser.add_argument("--remove-docker", help="Remove Docker from the system", action="store_true")
     parser.add_argument("--remove-ansible", help="Remove Ansible from the system, after doing any actions that require Ansible.", action="store_true")
+    parser.add_argument("--experimental", help="Void the warranty and use experimental features. DO NOT USE THIS unless you know what you are doing!", action="store_true")
 
     args = parser.parse_args()
 
