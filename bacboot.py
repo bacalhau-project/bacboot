@@ -357,7 +357,8 @@ def print_install_options():
     logging.info("""
 1) Install Bacalhau using Ansible
 2) Install Bacalhau using Docker (UNIMPLEMENTED)
-3) Install Bacalhau in the cloud using Ansible and Terraform (UNIMPLEMENTED)
+3) Install Bacalhau in the cloud using Ansible (UNIMPLEMENTED)
+4) Install Bacalhau in the cloud using Terraform + Ansible (UNIMPLEMENTED)
 """)
 
 # Advanced installers
@@ -603,6 +604,49 @@ def uninstall_pip3():
         logging.error("An error occurred during uninstallation. pip3 may still be installed.")
         return False
 
+# Experimental cloud features! HERE BE DRAGONS.
+def deploy_to_cloud():
+    # "ruh roh"
+    logging.warning("Oh god, we warned you. Really, you want to try this?")
+    logging.warning("Well, okay... if you're sure...")
+    logging.info("Alright, pick your poison, brave warrior. This will at least be fun.")
+    logging.info("""1) Deploy to AWS
+2) Deploy to GCP
+3) Deploy to Azure
+4) Deploy to DigitalOcean
+5) Deploy to Linode
+6) Deploy to Vultr
+    """)
+    logging.info("Actually, since we're in a hurry, and I'm being so obliging...")
+    logging.info("you don't get a choice. DigitalOcean it is!")
+    # We're just playing a bit here. DigitalOcean is the only provider we've implemented support for yet.
+    deploy_to_digitalocean()
+
+def deploy_to_digitalocean():
+    logging.info("We'll need to gather some info before we get started.")
+    logging.info("First, we'll need your DigitalOcean API token.")
+    logging.info("You can find this by going to https://cloud.digitalocean.com/account/api/tokens")
+    logging.info("and clicking \"Generate New Token\". Give it a name, and make sure it has the \"Read\" and \"Write\" permissions.")
+    do_api_token = input("Then, copy the token and paste it here: ")
+    logging.info("Next, we'll need to know what region you want to deploy to.")
+    logging.info("You can find a list of regions here: https://developers.digitalocean.com/documentation/v2/#list-all-regions")
+    logging.info("Just copy the slug for the region you want to deploy to.")
+    do_region = input("Then, copy the slug and paste it here: ")
+    logging.info("Finally, we'll need to know what size droplet you want to deploy.")
+    logging.info("You can find a list of droplet sizes here: https://developers.digitalocean.com/documentation/v2/#list-all-sizes")
+    logging.info("Just copy the slug for the size you want to deploy.")
+    do_size = input("Then, copy the slug and paste it here: ")
+    logging.info("Pick an existing SSH public key to pre-deploy on the machines:")
+    # List .pub file found in ~/.ssh/ and ask the user to pick one
+    # TODO (feat) (good-first-issue): We should probably support other SSH key locations, like /etc/ssh/ssh_host_rsa_key.pub
+    ssh_key_files = [f for f in os.listdir(os.path.expanduser("~/.ssh/")) if f.endswith(".pub")]
+    for i, key_file in enumerate(ssh_key_files, start=1):
+        logging.info(f"{i}) {key_file}")
+    ssh_key_choice = int(input("Then, enter the number of the key you want to use: "))
+    ssh_key_file = ssh_key_files[ssh_key_choice - 1]
+    print(ssh_key_file)
+    logging.info("Okay, we're ready to deploy to DigitalOcean!")
+    logging.error("But I'm still in a bad mood, so nope, we won't. Sorry!")
 
 # Installation and functionality verification functions
 def verify_client():
@@ -742,6 +786,18 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                 logging.error("Docker installation is not yet implemented.")
             elif install_choice == '3' or install_choice == "cloud":
                 logging.error("Cloud installation using Ansible and Terraform is not yet implemented.")
+                if not args.experimental:
+                    # NO. THERE IS MORE. BUT YOU ARE NOT WORTHY. NOT YET.
+                    return_to_menu()
+                else:
+                    logging.info("But since you look so pretty today, and you asked me nicely... hmm...")
+                    logging.warning("This is under construction 🚧")
+                    logging.warning("Mind the dust, it's pretty experimental.")
+                    logging.warning("You have been warned!")
+                    deploy_to_cloud()
+                    logging.warning("We had joy, we had fun, etc. Thanks for playing, goodnight!")
+                    sys.exit(1)
+
             else:
                 logging.error("Invalid choice of install method. Please try again.")
             # If we made it this far, we should have a working installation of Bacalhau.
