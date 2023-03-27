@@ -293,7 +293,7 @@ def run_ansible_playbook(playbook, args):
     # Run the playbook
     if args.ask_become_pass:
         if subprocess.run(["ansible-playbook", "--become", "--ask-become-pass", "-i", "/tmp/bacalhau-ansible/inventory", "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("We couldn't run the playbook. If you are accessing a remote machine, please check your network connection and permissions and try again.")
+            logging.error("We couldn't run the playbook, or it didn't succeed. If you are accessing a remote machine, please check your network connection and permissions and try again.")
             logging.error("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
             logging.error("and that you have sudo/become permissions if needed.")
             logging.error("")
