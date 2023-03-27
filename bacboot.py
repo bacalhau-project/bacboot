@@ -82,14 +82,13 @@ def begin_questionnaire(args):
     if not args.silent:
         logging.info("Let's get started! 🚀")
         logging.info("")
-        log_wrapped("First, we need to know what you want to do. Do you want to install the Bacalhau client, the Bacalhau node, or both?")
+        log_wrapped("First, we need to know what you want to do. Do you want to install just the Bacalhau client, or both Bacalhau and a node?")
         logging.info("")
         logging.info("(If you are upgrading Bacalhau, you can just run this install step and it will upgrade automatically!)")
         logging.info("")
-        logging.info("""
-1) Install the Bacalhau client
-2) Install a Bacalhau node
-3) Install the Bacalhau client and setup a Bacalhau node""")
+        logging.info("""1) Install the Bacalhau client
+2) Install the Bacalhau client and setup a Bacalhau node
+""")
     if args.unattended:
         choice = "client"
     else:
@@ -140,11 +139,12 @@ def begin_questionnaire(args):
     # User wants to install a node.
     elif choice == "2":
         logging.info("Installing a Bacalhau node...")
-        logging.info("Are you installing the Bacalhau node locally? (NOTE: The only answer is yes, as BacBoot does not yet support installing a Bacalhau node on a remote server.)")
-        logging.info("Note that this is not a limitation of Bacalhau itself, just BacBoot while it it's in early development!")
+        logging.info("Are you installing the Bacalhau node locally?")
         logging.info("")
-        logging.info("""
-1) Yes
+        logging.info("BacBoot does not yet support installing a Bacalhau node on a remote server.")
+        logging.info("This is not a limitation of Bacalhau itself, just BacBoot while it it's in early development!")
+        logging.info("")
+        logging.info("""1) Yes
 2) No
 """)
         choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
@@ -156,11 +156,6 @@ def begin_questionnaire(args):
             logging.error("We don't support this yet, but we're working on it! 🚧")
             logging.error("Please check back later!")
             return_to_menu()
-    # User wants to install both.
-    elif choice == "3":
-        logging.info("Installing the Bacalhau client and setting up a Bacalhau node...")
-        run_ansible_playbook("bacalhau-client.yml")
-        run_ansible_playbook("bacalhau-node.yml")
     elif choice == "q":
         logging.error("You chose not to do anything. Returning to the main menu...")
         return_to_menu()
