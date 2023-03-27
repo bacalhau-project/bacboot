@@ -678,7 +678,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                 sys.exit(1)
         else:
             # Prompt the user for input if we're not running in unattended mode.
-            choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-4, q): ").strip()
+            choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-5, q): ").strip()
 
         # Checks if the user wants to bail.
         if choice is not None and choice.lower() == 'q':
