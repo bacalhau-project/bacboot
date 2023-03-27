@@ -376,7 +376,7 @@ def install_ansible():
     choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
     if choice == "1":
         logging.info("Installing Ansible using pip3...")
-        pip3_installed = check_if_pip3_installed()
+        pip3_installed = check_if_pip3_installed(args)
         if pip3_installed:
             install_ansible_using_pip3()
         else:
@@ -799,7 +799,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                     uninstall_docker()
                 else:
                     logging.info("Leaving Docker installed.")
-            is_pip3_installed = check_if_pip3_installed()
+            is_pip3_installed = check_if_pip3_installed(args)
             if is_pip3_installed:
                 # We use warning instead of info here intentionally as this is a dangerous action for some users.
                 logging.warning("Finally, we noticed pip3 is installed. You probably DO want it, but if we installed it, we can remove it too.")
