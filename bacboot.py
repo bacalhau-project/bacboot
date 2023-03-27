@@ -14,6 +14,8 @@ EMOJI_RANGES = [
     (0x1F170, 0x1F251)
 ]
 EMOJI_CHARS = "".join([chr(c) for r in EMOJI_RANGES for c in range(r[0], r[1]+1)])
+# We are not "re-looping" unless we enter the main loop twice
+relooping = False
 
 # Helper functions
 def log_wrapped(text, level="info"):
@@ -35,6 +37,9 @@ def return_to_menu():
     # Wait up to 3 seconds for the user to enter any key.
     # If they make any input, return to the main menu.
     # After 3 seconds, return to the main menu anyways.
+    # Set relooping to true so we know we're about to loop back into the script
+    global relooping
+    relooping = True
     logging.info("Returning to the main menu in a few seconds (or press any key to skip straight there...)")
     # Wings doesn't actually understand this bit but it works. Thanks Copilot!
     i, o, e = select.select( [sys.stdin], [], [], 3 )
@@ -157,7 +162,8 @@ def begin_questionnaire(args):
             logging.error("Please check back later!")
             return_to_menu()
     elif choice == "q":
-        logging.error("You chose not to do anything. Returning to the main menu...")
+        logging.error("You chose not to do anything X. Returning to the main menu...")
+        args.install = None
         return_to_menu()
     else:
         logging.error("Invalid input. Please try again.")
@@ -664,19 +670,19 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
         logging.basicConfig(level=logging.INFO, format='%(message)s')
 
     while True:
-        # Print the intro screen. Does nothing in silent modes.
-        print_intro_screen()
         # Unconditionally define choice, as NoneType by default.
         choice = None
-        # Detect if we have automatic actions to take, if we do don't ask the user for input.
-        if args.install or args.uninstall or args.verify:
-            pass
         if args.unattended:
             # If we're running unattended mode, make sure we have actions to do.
             if args.install is None and args.uninstall is None and args.verify is None:
                 logging.error("No actions specified. Please specify an action to take in unattended mode.")
                 sys.exit(1)
+        # Detect if we have automatic actions to take, if we do don't ask the user for input and we break out of this loop.
+        if (args.install or args.uninstall or args.verify) and not relooping:
+            pass
         else:
+            # Print the intro screen. Does nothing in silent modes.
+            print_intro_screen()
             # Prompt the user for input if we're not running in unattended mode.
             choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-5, q): ").strip()
 
@@ -684,7 +690,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
         if choice is not None and choice.lower() == 'q':
             logging.error("Quitting...")
             sys.exit(1)
-        if choice == '1' or args.install:
+        if choice == '1' or (args.install and not relooping):
             if args.install:
                 # Take the install choice from the command line argument
                 if args.method:
@@ -752,11 +758,8 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                 logging.error("Invalid choice of what to test. Please try again.")
                 verify_choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-3, q): ").strip()
             if verify_choice.lower() == 'q':
-                if choice:
-                    return_to_menu()
-                else:
-                    logging.error("Quitting...")
-                    sys.exit(1)
+                logging.error("Quitting...")
+                sys.exit(1)
             if verify_choice == '1':
                 if verify_client():
                     logging.info("Looking good! You're all set. Enjoy! 🚀")
@@ -817,6 +820,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
         elif choice in ['3', '4']:
             logging.error("This option is not yet implemented.")
         else:
+            print("You entered: {}".format(choice))
             logging.error("Invalid choice of main task. Please try again.")
 
 if __name__ == "__main__":
