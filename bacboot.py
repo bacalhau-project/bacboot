@@ -216,13 +216,27 @@ def main_menu():
     }
     main_menu_choices.get(int(main_menu_choice) + 1)()
 
+def ansible_install_menu():
+    logging.info("Let's set up Ansible.")
+    logging.info("")
+    ansible_install_menu_options = [
+        "Install Ansible using pip3 (recommended + default)",
+        "🚧 Install Ansible using your package manager",
+    ]
+    ansible_install_menu_choice = display_menu(ansible_install_menu_options, default_choice=0)
+    ansible_install_menu_choices = {
+        1: install_ansible_using_pip3,
+        2: install_ansible_using_package_manager
+    }
+    ansible_install_menu_choices.get(int(ansible_install_menu_choice) + 1)()
+
 def bacalhau_install_menu():
     logging.info("In order to install Bacalhau safely and cleanly, we're going to need a few prerequisites.")
     log_wrapped("BacBoot is primarily powered by Ansible, but it's also good for deploying Bacalhau on Docker, driving Terraform or deploying in the cloud. What would you like to do?")
     logging.info("")
     log_wrapped("Also, this installer can even remove Ansible afterwards if you don't want to have it long term!")
     bacalhau_install_menu_options = [
-        "Install Bacalhau using Ansible",
+        "Install Bacalhau using Ansible (default)",
         "🚧 Install Bacalhau using Docker",
         "🚧 Install Bacalhau in the cloud using Ansible",
         "🚧 Install Bacalhau in the cloud using Terraform + Ansible"
@@ -455,9 +469,10 @@ def run_ansible_playbook(playbook, inventory, extra_vars=None):
     logging.info("We're about to run Ansible! Here's the playbook command for reference:")
     logging.info("")
     logging.info("ansible-playbook -i " + inventory + (" --ask-become-pass" if args.ask_become_pass else "") + " /tmp/bacalhau-ansible/" + playbook)
+    logging.info("")
 
     # Run the playbook
-    if subprocess.run(["ansible-playbook", "--become", "--ask-become-pass" if args.ask_become_pass else "", "-i", inventory, "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL).returncode != 0:
+    if subprocess.run(["ansible-playbook", "--become", "--ask-become-pass" if args.ask_become_pass else "", "-i", inventory, "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         logging.error("We couldn't run the playbook, or it didn't succeed. If you are accessing a remote machine, please check your network connection and permissions and try again.")
         logging.error("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
         logging.error("and that you have sudo/become permissions if needed.")
@@ -491,31 +506,11 @@ def install_ansible():
     is_ansible_installed = check_if_ansible_installed()
 
     if not is_ansible_installed:
-        # Install any required packages
         print_ansible_explanation()
+        ansible_install_menu()
     else:
         logging.info("We detected an existing Ansible installation. You're ready to rock already! 🎸🪨")
         logging.info("")
-
-    #     is_ansible_installed = check_if_ansible_installed(args)
-    #     if is_ansible_installed:
-    #         logging.info("We detected an existing Ansible installation. You're ready to rock already! 🎸🪨")
-    #         begin_questionnaire(args)
-    #     else:
-    #         logging.warning("We didn't detect an existing Ansible installation. Let's install it now.")
-    #         install_ansible(args)
-    #         logging.info("Awesome, Ansible was installed successfully! Let's rock! 🎸🪨")
-    #         begin_questionnaire(args)
-    #     # We presumably succeeded, so let's remove Ansible if the user wants us to.
-    #     # TODO (feat): Implement post-installation removal of Ansible.
-    # else:
-    #     # We are running in silent mode, simply install Ansible and pip3 if needed.
-    #     is_ansible_installed = check_if_ansible_installed(args)
-    #     if is_ansible_installed:
-    #         begin_questionnaire(args)
-    #     else:
-    #         install_ansible(args)
-    #         begin_questionnaire(args)
 
 def install_bacalhau_client_ansible(remote_or_local):
     # We don't need to run Ansible Galaxy for the client, so we can just run the playbook directly.
@@ -631,13 +626,23 @@ def install_pip3():
     logging.info("Installing pip3...")
     try:
         # TODO (bug): We should also support Red Hat based distros, this is too distro dependent. Ironically, Ansible would help us here but we don't have it yet.
-        subprocess.check_output(["sudo", "apt", "install", "python3-pip"])
+        subprocess.check_output(["sudo", "apt", "install", "-y", "python3-pip"])
         logging.info("pip3 installed successfully!")
     except subprocess.CalledProcessError:
         logging.error("Unable to install pip3. Please try again, or ask us for help!")
         return_to_menu()
 
 def install_ansible_using_pip3():
+    # Check for pip3 and then install it if needed
+    if not check_if_pip3_installed():
+        logging.info("We'll need Python's pip3 tool installed before we can proceed. Is that okay with you?")
+        choice = input("Enter 'y' to install pip3 or enter 'q' to quit without making any further changes: ")
+        if choice == "y":
+            install_pip3()
+        else:
+            logging.error("Okay, not installing pip3. We can't proceed without it, so we'll simply return you to the main menu now 😃")
+            return_to_menu()
+
     logging.info("Installing Ansible using pip3...")
     try:
         # Check if we are running as root, if not we need to use sudo
@@ -680,7 +685,7 @@ def check_if_ansible_installed():
             logging.warning("Ansible is not installed.")
         return False
 
-def check_if_docker_installed(args):
+def check_if_docker_installed():
     logging.info("Checking if Docker is installed...")
     try:
         # TODO (bug): If you have Podman installed, this check will succeed and technically should NOT!
@@ -691,7 +696,7 @@ def check_if_docker_installed(args):
         logging.warning("Docker is not installed.")
         return False
 
-def check_if_pip3_installed(args):
+def check_if_pip3_installed():
     logging.info("Checking if pip3 is installed...")
     try:
         subprocess.check_output(["which", "pip3"])
