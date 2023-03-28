@@ -256,6 +256,9 @@ def bacalhau_what_to_install_menu():
     # Ask the user if they want to deploy remotely or locally
     remote_or_local = bacalhau_local_or_remote_menu()
 
+    # Grab the playbook and ensure it is verified, valid and up-to-date
+    setup_and_manage_playbook_repo()
+
     # Pass the user to the installer for the choice they made earlier
     # and pass remote_or_local value to the installer.
     bacalhau_what_to_install_menu_choices.get(int(bacalhau_what_to_install_menu_choice) + 1)(remote_or_local)
@@ -277,7 +280,6 @@ def bacalhau_local_or_remote_menu():
         3: lambda: "both"
     }
     remote_or_local = bacalhau_local_or_remote_menu_choices[bacalhau_local_or_remote_menu_choice + 1]()
-    print("Remote or local: " + remote_or_local)
     return remote_or_local
 
 # Information screens
@@ -390,23 +392,13 @@ def begin_questionnaire(args):
             logging.info("Installing Bacalhau node(s) remotely...")
             logging.warning("This is under construction 🚧")
             logging.warning("Mind the dust, it's pretty experimental.")
-            # Check if args.inventory appears to be a relative path and throw an error if so
-            if args.inventory and not os.path.isabs(args.inventory):
-                logging.error("You must specify an absolute path to the inventory file with the --inventory flag to use this feature.")
-                logging.error("Please use an absolute path instead and try again. Exiting...")
-                sys.exit(1)
-            if not args.inventory:
-                logging.error("You must specify an inventory file with the --inventory flag to use this feature.")
-                logging.error("Please provide one and try again.")
-            else:
-                logging.info("Using inventory file: " + args.inventory)
-                install_local_node = input("Would you also like to install the Bacalhau client on the machine running BacBoot? (y/n) ")
-                if install_local_node == "y":
-                    logging.info("Installing the Bacalhau client on the machine running BacBoot...")
-                    run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-                logging.info("")
-                run_ansible_playbook("bacalhau-node.yml", args, inventory=args.inventory)
-            return_to_menu()
+            #     install_local_node = input("Would you also like to install the Bacalhau client on the machine running BacBoot? (y/n) ")
+            #     if install_local_node == "y":
+            #         logging.info("Installing the Bacalhau client on the machine running BacBoot...")
+            #         run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
+            #     logging.info("")
+            #     run_ansible_playbook("bacalhau-node.yml", args, inventory=args.inventory)
+            # return_to_menu()
     elif choice == "q":
         logging.error("You chose not to do anything X. Returning to the main menu...")
         args.install = None
@@ -415,28 +407,19 @@ def begin_questionnaire(args):
         logging.error("Invalid input. Please try again.")
         begin_questionnaire(args)
 
-# Ansible automation
-def run_ansible_playbook(playbook, args, inventory, extraopts=None):
-    logging.info("First, let's make sure we have a copy of the Ansible playbook for Bacalhau.")
-    logging.info("We'll clone the repository from GitHub if we don't already have it.")
-    logging.info("To keep things clean, we'll save the playbook to /tmp/bacalhau-ansible.")
-    logging.info("For security reasons, we will verify that the playbook is untouched before we run it!")
-    # TODO (feat): Implement this check after we get signing going.
-    # logging.info("We'll also verify that the playbook is signed by the Bacalhau developers.")
-    logging.info("If you don't trust us, you can always check the source code yourself!")
-    logging.info("")
-    logging.info("(If you're confused or this sounds scary, don't worry! We're just making sure you're safe.")
-    logging.info("In this case, it's probably safe for you to continue if we don't print any errors and abort.)")
+# Git automation
+def setup_and_manage_playbook_repo():
+# TODO (refactor) - split this into individual functions, it's very long.
+    # Check if the repository already exists
     if os.path.isdir("/tmp/bacalhau-ansible"):
-        if not args.silent:
-            logging.info("We already have a copy of the playbook. We'll use that.")
-            logging.info("But for security, let's check it's a clean and legitimate copy from GitHub.")
-            logging.info("Checking...")
+        # We already have a copy of the playbook. We'll use that.
+        # But for security, let's check it's a clean and legitimate copy from GitHub.
+        logging.info("Checking existing bacalhau-playbook repository...")
         # Change into the /tmp/bacalhau-ansible directory
         os.chdir("/tmp/bacalhau-ansible")
         # Check that the repository is clean
         if subprocess.run(["git", "status", "--porcelain"], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("The repository is not clean! Please check it and try again.")
+            logging.error("The bacalhau-playbook repository is not clean! Please check it and try again.")
             if args.silent:
                 logging.error("You're running in silent mode, but it isn't safe for us to continue. Exiting now...")
                 sys.exit(1)
@@ -453,32 +436,32 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
             if is_behind or output:
                 # Set a blank choice by default
                 choice = ""
-
-                logging.warning("The repository is not up to date! We'll try to update it for you now.")
-                if not args.silent:
+                if not args.unattended:
+                    logging.warning("Would you like to update your copy of the bacalhau-playbook repository? (recommended).")
                     logging.info("Press [ENTER] to let us know that's okay.")
-                    logging.info("(Or if you want to run it anyways with the current version, type current and press [ENTER].)")
-                    logging.info("Alternatively, enter anything else and we will abort entirely.")
+                    logging.info("Or, if you want to skip updating for now, type \"current\" and then press [ENTER].")
                     logging.info("")
-                    logging.info("If you're confused or don't know what to do here, just press [ENTER]!")
-                    # Check if the user wants to update the playbook
-                    choice = input()
-                if choice == "":
-                    logging.info("Let's update it for you automatically.")
-                    # Update the playbook and make sure we get a clean return code.
-                    if subprocess.run(["git", "pull"], stdout=subprocess.DEVNULL).returncode != 0:
-                        logging.error("Something went wrong while trying to update the playbook. It's probably not safe for us to continue, so we won't.")
-                        logging.error("Please check it and try again.")
-                        if args.silent:
-                            logging.error("You're running in silent mode, but it isn't safe for us to continue. Exiting now...")
-                        return_to_menu()
-                    logging.info("Updated successfully!")
-                    logging.info("Let's continue!")
-                elif choice == "current":
-                    logging.info("Okay, we'll run it anyways with the current version.")
-                else:
-                    logging.info("Okay, we'll abort entirely.")
-                    return_to_menu()
+                    logging.info("(If you're confused or don't know what to do here, just press [ENTER]!)")
+                    # Loop until the user enters a valid input
+                    while True:
+                        # Check if the user wants to update the playbook
+                        choice = input().strip().lower()
+                        if choice == "":
+                            logging.debug("Updating the bacalhau-playbook repository...")
+                            # Update the playbook and make sure we get a clean return code.
+                            if subprocess.run(["git", "pull"], stdout=subprocess.DEVNULL).returncode != 0:
+                                logging.error("Something went wrong while trying to update the playbook. It's probably not safe for us to continue, so we won't.")
+                                logging.error("Please check it and try again.")
+                                if args.silent:
+                                    logging.error("You're running in silent mode, but it isn't safe for us to continue. Exiting now...")
+                                return_to_menu()
+                            logging.info("Updated successfully! Let's continue!")
+                            break  # Exit the loop
+                        elif choice == "current":
+                            logging.info("Okay, we'll run with the current version.")
+                            break  # Exit the loop
+                        else:
+                            logging.info("Invalid input. Please try again.")
             else:
                 logging.info("The repository is up to date!")
         except subprocess.CalledProcessError as e:
@@ -493,9 +476,10 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
         #     return_to_menu()
         if not args.silent:
             logging.info("Checked successfully!")
-            logging.info("We'll now run the playbook. Thanks for being patient with us! 🙏")
+            logging.info("We'll now continue. Thanks for being patient with us! 🙏")
+            logging.info("")
     else:
-        logging.warning("We don't have a copy of the playbook. We'll clone it from GitHub.")
+        logging.warning("We don't have a copy of bacalhau-playbook. We'll grab it from GitHub.")
         logging.info("Cloning...")
         # Check that we have git installed!
         if subprocess.run(["which", "git"], stdout=subprocess.DEVNULL).returncode != 0:
@@ -507,89 +491,116 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
             logging.error("We couldn't clone the repository. Please check your internet connection and try again.")
             return_to_menu()
         logging.info("Cloned successfully!")
-        logging.info("We just pulled this copy, so it's probably legitimate. Future versions will check this more thoroughly!")
-    logging.info("First, we'll run ansible-galaxy and install any required modules...")
-    # Run ansible-galaxy install -r requirements.yml
-    if playbook == "bacalhau-client.yml":
-        logging.info("We're running the simple Bacalhau playbook, so we scan skip requirements.")
-    elif playbook == "bacalhau-node.yml":
-        if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
-            return_to_menu()
-    elif playbook == "cloud.yml":
-        # Install the cloud-specific requirements.
-        if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements-cloud.yml"], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
-            return_to_menu()
-    else:
-        logging.warning("Couldn't figure out which specific requirements file to load, so using the generic one.")
-        if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
-            return_to_menu()
-    
-    # Set final inventory path based on user input
-    if inventory == "localhost":
-        final_inventory_path = "/tmp/bacalhau-ansible/inventory"
-    else:
-        final_inventory_path = inventory
-    logging.info("Now, let's run the playbook!")
-    logging.info("We'll run it with the following command:")
-    logging.info("ansible-playbook -i " + final_inventory_path + " /tmp/bacalhau-ansible/" + playbook)
-    logging.info("Before we run this playbook, are you connecting as root or have passwordless sudo on the remote machine? If not, we'll run with --ask-become-pass mode turned on.")
-    logging.info("If you're not sure, just hit enter and we'll ask you.")
-    if args.unattended:
-        # We are running unattended, so we'll assume the user doesn't want to run with --ask-become-pass if they haven't explicitly specified that.
-        if not args.ask_become_pass:
-            logging.info("You're running in unattended mode, so we'll assume you do not want to run Ansible using --ask-become-pass.")
-            logging.info("If you want to run it with --ask-become-pass, please run it again and add --ask-become-pass.")
-        else:
-            logging.info("You're running in unattended mode, but you have set --ask-become-pass")
-            logging.info("When prompted, enter your become/sudo password, and we'll continue in fully unattended mode from there if possible.")
-    # If are not in unattended mode, ask the user if they want to run with --ask-become-pass mode turned on.
-    else:
-        while True:
-            choice = input("Enter 'y' to run with --ask-become-pass, or enter 'n' to run without: ")
-            if choice == "y":
-                args.ask_become_pass = True
-            elif choice == "n":
-                pass
-            else:
-                logging.error("Invalid input. Please try again, or enter 'q' to return to the main menu.")
-                continue
-            break
-    # Run the playbook
-    if args.ask_become_pass:
-        if subprocess.run(["ansible-playbook", "--become", "--ask-become-pass", "-i", final_inventory_path, "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("We couldn't run the playbook, or it didn't succeed. If you are accessing a remote machine, please check your network connection and permissions and try again.")
-            logging.error("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
-            logging.error("and that you have sudo/become permissions if needed.")
-            logging.error("")
-            logging.error("(If you are feeling particularly adventurous - and be careful if you are - run the playbook by hand to see what's wrong.")
-            logging.error("Feel free to ask for help if you take this route! 🙏)")
-            return_to_menu()
-    else:
-        if subprocess.run(["ansible-playbook", "--become", "-i", final_inventory_path, "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL).returncode != 0:
-            logging.error("We couldn't run the playbook. If you are accessing a remote machine, please check your network connection and permissions and try again.")
-            logging.error("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
-            logging.error("and that you have sudo/become permissions if needed.")
-            logging.error("")
-            logging.error("(If you are feeling particularly adventurous - and be careful if you are - run the playbook by hand to see what's wrong.")
-            logging.error("Feel free to ask for help if you take this route! 🙏)")
-            return_to_menu()
+        # We just pulled this copy, so it's probably legitimate. Future versions will check this more thoroughly!
 
-    if args.unattended:
-        # We're running in unattended mode, and we're pretty sure we succeeded, so let us simply continue.
-        logging.info("We believe we ran that playbook successfully. Continuing as we are in unattended mode.")
-        pass
-    else:
-        logging.info("We believe we ran that playbook successfully. Check it out, then press [ENTER] to continue or any other key to abort.")
-        choice = input()
-        if choice == "":
-            logging.info("Continuing...")
+# Ansible automation
+def check_inventory_file(inventory):
+    # The user has provided a filename of or path to an inventory file. Let's verify it.
+    # First, we'll check if the path is an absolute path:
+    if not os.path.isabs(inventory):
+        # The inventory is not an absolute path, but maybe we can still work with this.
+        # Check if the inventory is a filename that exists in the current directory.
+        if os.path.isfile(os.path.join(os.getcwd(), inventory)):
+            # The inventory is a filename that exists in the current directory. Let's use that.
+            inventory = os.path.join(os.getcwd(), inventory)
+            return inventory
         else:
-            logging.error("Aborting...")
+            # Could not find the inventory file in the current directory, and it is not an absolute path. Fail.
+            logging.error("We couldn't locate your inventory file.")
+            logging.error("Please check the path and try again.")
+            return False
+
+def get_inventory():
+    # Get the inventory the user plans to use, either by asking them or fetching it from args.
+    while True:
+        if args.inventory:
+            inventory = check_inventory_file(args.inventory)
+            if inventory:
+                # Break out of the loop, having succeeded.
+                break
+            else:
+                # We did not successfully find an inventory file, return to the loop.
+                continue
+        else:
+            # The user has not provided an inventory file. Let's ask them for one.
+            if not args.unattended:
+                logging.info("Please enter the path to your inventory file.")
+                logging.info("(Later versions of BacBoot will help you build one if you don't have one yet.)")
+                inventory = input().strip()
+                inventory = check_inventory_file(inventory)
+                if inventory:
+                    # Break out of the loop, having succeeded.
+                    break
+                else:
+                    # We did not successfully find an inventory file, return to the loop.
+                    continue
+            else:
+                # We are in unattended mode, but the user did not provide an inventory file.
+                logging.error("You must specify an inventory file with the --inventory flag to use this feature in unattended mode.")
+                logging.error("Please give an inventory file and try again. Exiting...")
+                sys.exit(1)
+    return inventory
+
+def run_ansible_playbook(playbook, inventory, extra_vars=None):
+    # If we're running against localhost, use the default inventory file.
+    if inventory == "localhost":
+        inventory = "/tmp/bacalhau-ansible/inventory"
+    logging.info("We're about to run Ansible! Here's the playbook command for reference:")
+    logging.info("")
+    logging.info("ansible-playbook -i " + inventory + (" --ask-become-pass" if args.ask_become_pass else "") + " /tmp/bacalhau-ansible/" + playbook)
+
+    # Old code, we probably don't need to run with --ask-become-pass unless the user says we do.
+    # logging.info("Before we run this playbook, are you connecting as root or have passwordless sudo on the remote machine? If not, we'll run with --ask-become-pass mode turned on.")
+    # logging.info("If you're not sure, just hit enter and we'll ask you.")
+    # if args.unattended:
+    #     # We are running unattended, so we'll assume the user doesn't want to run with --ask-become-pass if they haven't explicitly specified that.
+    #     if not args.ask_become_pass:
+    #         logging.info("You're running in unattended mode, so we'll assume you do not want to run Ansible using --ask-become-pass.")
+    #         logging.info("If you want to run it with --ask-become-pass, please run it again and add --ask-become-pass.")
+    #     else:
+    #         logging.info("You're running in unattended mode, but you have set --ask-become-pass")
+    #         logging.info("When prompted, enter your become/sudo password, and we'll continue in fully unattended mode from there if possible.")
+    # # If are not in unattended mode, ask the user if they want to run with --ask-become-pass mode turned on.
+    # else:
+    #     while True:
+    #         choice = input("Enter 'y' to run with --ask-become-pass, or enter 'n' to run without: ")
+    #         if choice == "y":
+    #             args.ask_become_pass = True
+    #         elif choice == "n":
+    #             pass
+    #         else:
+    #             logging.error("Invalid input. Please try again, or enter 'q' to return to the main menu.")
+    #             continue
+    #         break
+
+    # Run the playbook
+    if subprocess.run(["ansible-playbook", "--become", "--ask-become-pass" if args.ask_become_pass else "", "-i", inventory, "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL).returncode != 0:
+        logging.error("We couldn't run the playbook, or it didn't succeed. If you are accessing a remote machine, please check your network connection and permissions and try again.")
+        logging.error("You'll especially want to check that you can access the remote machine using your SSH keys, that you have accepted the machine's host keys...")
+        logging.error("and that you have sudo/become permissions if needed.")
+        logging.error("")
+        logging.error("(If you are feeling particularly adventurous - and be careful if you are - run the playbook by hand to see what's wrong.")
+        logging.error("Feel free to ask for help if you take this route! 🙏)")
+        if not args.unattended:
             return_to_menu()
+        else:
+            # We're running in unattended mode, so the only safe thing to do here is abort.
+            logging.error("It's probably not safe or useful for us to continue, so we won't.")
+            sys.exit(1)
+
+    logging.info("Successfully ran Ansible playbook " + playbook + "!")
     # TODO (bug): If we remove Ansible, we should remove the playbook too!
+
+def run_ansible_galaxy(requirements_file):
+    if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/" + requirements_file], stdout=subprocess.DEVNULL).returncode != 0:
+        logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
+        if not args.unattended:
+            # We are in interactive mode, so dump the user to the menu.
+            return_to_menu()
+        else:
+            # We are in unattended mode, so we should probably exit.
+            logging.error("It's probably not safe or useful for us to continue, so we won't.")
+            sys.exit(1)
 
 # Advanced installers
 def install_ansible():
@@ -623,10 +634,26 @@ def install_ansible():
     #         install_ansible(args)
     #         begin_questionnaire(args)
 
-def install_bacalhau_client_ansible():
-    
-    logging.error("TODO: Run the Ansible playbook for just the client here")
-    return_to_menu()
+def install_bacalhau_client_ansible(remote_or_local):
+    # We don't need to run Ansible Galaxy for the client, so we can just run the playbook directly.
+    if remote_or_local == "local":
+        run_ansible_playbook("bacalhau-client.yml", "localhost")
+    if remote_or_local == "remote":
+        # We need an inventory to pass to the playbook. Prompt the user if one is not already provided.
+        get_inventory()
+        # If we're installing the client remotely, we need to run Ansible Galaxy first.
+        run_ansible_galaxy("requirements.yml")
+        # Install the client on all remote hosts specified in the inventory.
+        run_ansible_playbook("bacalhau-client.yml")
+    if remote_or_local == "both":
+        # We need an inventory to pass to the playbook. Prompt the user if one is not already provided.
+        get_inventory()
+        # If we're installing the client remotely, we need to run Ansible Galaxy first.
+        run_ansible_galaxy("requirements.yml")
+        # Install the client on all remote hosts specified in the inventory.
+        run_ansible_playbook("bacalhau-client.yml")
+        # Install the client on the local machine.
+        run_ansible_playbook("bacalhau-client.yml", "localhost")
 
 def install_bacalhau_node_ansible():
     logging.error("TODO: Run the Ansible playbook for just the client here")
