@@ -5,6 +5,7 @@ import select,sys,os
 import unicodedata
 import argparse
 import logging
+import time
 
 # Cruft used to improve autodetection of success and failure states
 EMOJI_RANGES = [
@@ -51,149 +52,14 @@ def return_to_menu():
         main()
 
 
-# Intro screen
-def print_intro_screen():
-    logging.info(r"""
-  _                     _ _                 
- | |                   | | |                
- | |__   __ _  ___ __ _| | |__   __ _ _   _ 
- | '_ \ / _` |/ __/ _` | | '_ \ / _` | | | |
- | |_) | (_| | (_| (_| | | | | | (_| | |_| |
- |_.__/ \__,_|\___\__,_|_|_| |_|\__,_|\__,_|
-                                            
- a Compute over Data framework for public, transparent, and optionally verifiable computation
-
- ⚡️ 🔐 💸 🤓 💥 📚 🎆 ⚡️ 🔐 💸 🤓 💥 📚 🎆 ⚡️
-
- ><(((º>
-""")
-    logging.info("\nWelcome to BacBoot! 🤖")
-    logging.info("")
-    log_wrapped("This is an installer/bootstrapper for deploying Bacalhau on a single computer, group of computers or across diverse infrastructure. Whether you just want to install the Bacalhau client, or you want to install Bacalhau node(s) or clusters, BacBoot is the fastest and easiest path to doing so.")
-    logging.info("\nWhat would you like to do?")
-    logging.info("""
-1) Install or upgrade Bacalhau
-2) Verify an installation of Bacalhau
-3) Find out more about BacBoot
-4) Check if my system(s) are supported by BacBoot (UNIMPLEMENTED)
-5) Uninstall Bacalhau
-""")
-
-
-# Questionnaire
-def begin_questionnaire(args):
-    # We now know we have Ansible available to us, so let's gather information from the user about what they want to do.
-    # Check if we're running in silent mode first
-    if not args.silent:
-        logging.info("Let's get started! 🚀")
-        logging.info("")
-        log_wrapped("First, we need to know what you want to do. Do you want to install just the Bacalhau client, or both Bacalhau and a node?")
-        logging.info("")
-        logging.info("(If you are upgrading Bacalhau, you can just run this install step and it will upgrade automatically!)")
-        logging.info("")
-        # TODO (feat): Allow installing the bacalhau client on multiple machines without deploying nodes
-        logging.info("""1) Install the Bacalhau client locally
-2) Install the Bacalhau client and setup Bacalhau node(s)
-""")
-    if args.unattended and not args.install == "node":
-        choice = "client"
-    else:
-        choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
-    # User wants to install just the client.
-    if choice == "1" or choice == "client":
-        if not args.silent:
-            logging.info("Installing the Bacalhau client...")
-        # If we know we have a specific version already, or the user is running in unattended mode, don't bother printing the related help text and just jump in.
-        if args.version or args.unattended:
-            if args.version:
-                version = args.version
-            if args.unattended:
-                version = ""
-        else:
-            logging.info("We don't really need to know anything to proceed, unless you want to install a specific version of Bacalhau!")
-            logging.info("Press [ENTER] to proceed, or enter a version number to install a specific version of Bacalhau.")
-            logging.info("")
-            logging.info("(If you're confused or don't know what to do here, just press ENTER!)")
-            version = input("Enter a version number or press [ENTER] to proceed: ")
-        if version == "" or version == "latest":
-            # Set bacalhau_version to "latest" as we do not actually have a custom version specified.
-            bacalhau_version = "latest"
-            # Let's make sure that we undo any changes to the overrides file that might have been made previously.
-            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
-            if os.path.exists(overrides_file):
-                # Modify the overrides file to set the bacalhau_version variable
-                command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
-                os.system(command)
-            # Now that we have applied the correct overrides, let's proceed!
-            run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-        else:
-            # Modify /tmp/bacalhau-ansible/vars/overrides.yml to install a specific version of Bacalhau
-            # We'll do that by setting the variable "bacalhau_version" to the version number the user entered.
-            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
-            bacalhau_version = version.strip()  # Remove any leading/trailing whitespace
-
-            if not os.path.exists(overrides_file):
-                # If the overrides file does not exist, copy overrides.yml.dist to create it
-                command = f"cp /tmp/bacalhau-ansible/vars/overrides.yml.dist {overrides_file}"
-                os.system(command)
-
-            # Modify the overrides file to set the bacalhau_version variable
-            command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
-            os.system(command)
-            # Now that we have applied the correct overrides, let's proceed!
-            run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-    # User wants to install a node.
-    elif choice == "2":
-        logging.info("Installing Bacalhau node(s)...")
-        logging.info("Are you installing a Bacalhau node locally, or remotely installing node(s)?")
-        logging.info("")
-        logging.info("""1) Local node
-2) Remote node(s)
-""")
-        choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
-        if choice == "1":
-            logging.info("Installing a Bacalhau node locally...")
-            run_ansible_playbook("bacalhau-node.yml", args, inventory="localhost")
-        elif choice == "2" or choice == "q":
-            logging.info("Installing Bacalhau node(s) remotely...")
-            logging.warning("This is under construction 🚧")
-            logging.warning("Mind the dust, it's pretty experimental.")
-            # Check if args.inventory appears to be a relative path and throw an error if so
-            if args.inventory and not os.path.isabs(args.inventory):
-                logging.error("You must specify an absolute path to the inventory file with the --inventory flag to use this feature.")
-                logging.error("Please use an absolute path instead and try again. Exiting...")
-                sys.exit(1)
-            if not args.inventory:
-                logging.error("You must specify an inventory file with the --inventory flag to use this feature.")
-                logging.error("Please provide one and try again.")
-            else:
-                logging.info("Using inventory file: " + args.inventory)
-                install_local_node = input("Would you also like to install the Bacalhau client on the machine running BacBoot? (y/n) ")
-                if install_local_node == "y":
-                    logging.info("Installing the Bacalhau client on the machine running BacBoot...")
-                    run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-                logging.info("")
-                run_ansible_playbook("bacalhau-node.yml", args, inventory=args.inventory)
-            return_to_menu()
-    elif choice == "q":
-        logging.error("You chose not to do anything X. Returning to the main menu...")
-        args.install = None
-        return_to_menu()
-    else:
-        logging.error("Invalid input. Please try again.")
-        begin_questionnaire(args)
-
-
-# Ansible automation
-def run_ansible_playbook(playbook, args, inventory, extraopts=None):
-    print("Extraopts provided", str(extraopts))
+# Download, check and update the playbook repository
+def get_and_check_playbook(args):
     logging.info("First, let's make sure we have a copy of the Ansible playbook for Bacalhau.")
     logging.info("We'll clone the repository from GitHub if we don't already have it.")
     logging.info("To keep things clean, we'll save the playbook to /tmp/bacalhau-ansible.")
     logging.info("For security reasons, we will verify that the playbook is untouched before we run it!")
     # TODO (feat): Implement this check after we get signing going.
     # logging.info("We'll also verify that the playbook is signed by the Bacalhau developers.")
-    logging.info("If you don't trust us, you can always check the source code yourself!")
     logging.info("")
     logging.info("(If you're confused or this sounds scary, don't worry! We're just making sure you're safe.")
     logging.info("In this case, it's probably safe for you to continue if we don't print any errors and abort.)")
@@ -263,7 +129,6 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
         #     return_to_menu()
         if not args.silent:
             logging.info("Checked successfully!")
-            logging.info("We'll now run the playbook. Thanks for being patient with us! 🙏")
     else:
         logging.warning("We don't have a copy of the playbook. We'll clone it from GitHub.")
         logging.info("Cloning...")
@@ -278,11 +143,176 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
             return_to_menu()
         logging.info("Cloned successfully!")
         logging.info("We just pulled this copy, so it's probably legitimate. Future versions will check this more thoroughly!")
-    logging.info("First, we'll run ansible-galaxy and install any required modules...")
+
+# Intro screen
+def print_intro_screen():
+    logging.info(r"""
+  _                     _ _                 
+ | |                   | | |                
+ | |__   __ _  ___ __ _| | |__   __ _ _   _ 
+ | '_ \ / _` |/ __/ _` | | '_ \ / _` | | | |
+ | |_) | (_| | (_| (_| | | | | | (_| | |_| |
+ |_.__/ \__,_|\___\__,_|_|_| |_|\__,_|\__,_|
+                                            
+ a Compute over Data framework for public, transparent, and optionally verifiable computation
+
+ ⚡️ 🔐 💸 🤓 💥 📚 🎆 ⚡️ 🔐 💸 🤓 💥 📚 🎆 ⚡️
+
+ ><(((º>
+""")
+    logging.info("\nWelcome to BacBoot! 🤖")
+    logging.info("")
+    log_wrapped("This is an installer/bootstrapper for deploying Bacalhau on a single computer, group of computers or across diverse infrastructure. Whether you just want to install the Bacalhau client, or you want to install Bacalhau node(s) or clusters, BacBoot is the fastest and easiest path to doing so.")
+    logging.info("\nWhat would you like to do?")
+    logging.info("""
+1) Install or upgrade Bacalhau
+2) Verify an installation of Bacalhau
+3) Find out more about BacBoot
+4) Check if my system(s) are supported by BacBoot (UNIMPLEMENTED)
+5) Uninstall Bacalhau
+""")
+
+# Questionnaire
+def begin_questionnaire(args):
+    # We now know we have Ansible available to us, so let's gather information from the user about what they want to do.
+    # Check if we're running in silent mode first
+    if not args.silent:
+        logging.info("Let's get started! 🚀")
+        logging.info("")
+    if args.unattended and not args.install == "node":
+        choice = "client"
+    elif args.unattended and args.install == "node":
+        choice = "node"
+    else:
+        log_wrapped("First, we need to know what you want to do. Do you want to install just the Bacalhau client, or both Bacalhau and a node?")
+        logging.info("")
+        logging.info("(If you are upgrading Bacalhau, you can just run this install step and it will upgrade automatically!)")
+        logging.info("")
+        # TODO (feat): Allow installing the bacalhau client on multiple machines without deploying nodes
+        logging.info("""1) Install the Bacalhau client locally
+2) Install the Bacalhau client and setup Bacalhau node(s)
+""")
+        choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
+    # User wants to install just the client.
+    if choice == "1" or choice == "client":
+        if not args.silent:
+            logging.info("Installing the Bacalhau client...")
+        # If we know we have a specific version already, or the user is running in unattended mode, don't bother printing the related help text and just jump in.
+        if args.version or args.unattended:
+            if args.version:
+                version = args.version
+            if args.unattended:
+                version = ""
+        else:
+            logging.info("We don't really need to know anything to proceed, unless you want to install a specific version of Bacalhau!")
+            logging.info("Press [ENTER] to proceed, or enter a version number to install a specific version of Bacalhau.")
+            logging.info("")
+            logging.info("(If you're confused or don't know what to do here, just press ENTER!)")
+            version = input("Enter a version number or press [ENTER] to proceed: ")
+        if version == "" or version == "latest":
+            # Set bacalhau_version to "latest" as we do not actually have a custom version specified.
+            bacalhau_version = "latest"
+            # Let's make sure that we undo any changes to the overrides file that might have been made previously.
+            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
+            if os.path.exists(overrides_file):
+                # Modify the overrides file to set the bacalhau_version variable
+                command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
+                os.system(command)
+            # Now that we have applied the correct overrides, let's proceed!
+            run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
+        else:
+            # Modify /tmp/bacalhau-ansible/vars/overrides.yml to install a specific version of Bacalhau
+            # We'll do that by setting the variable "bacalhau_version" to the version number the user entered.
+            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
+            bacalhau_version = version.strip()  # Remove any leading/trailing whitespace
+
+            if not os.path.exists(overrides_file):
+                # If the overrides file does not exist, copy overrides.yml.dist to create it
+                command = f"cp /tmp/bacalhau-ansible/vars/overrides.yml.dist {overrides_file}"
+                os.system(command)
+
+            # Modify the overrides file to set the bacalhau_version variable
+            command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
+            os.system(command)
+            # Now that we have applied the correct overrides, let's proceed!
+            run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
+    # User wants to install a node.
+    elif choice == "2" or choice in ["node", "nodes"]:
+        logging.info("Installing Bacalhau node(s)...")
+        logging.info("Are you installing a Bacalhau node locally, or remotely installing node(s)?")
+        logging.info("")
+        logging.info("""1) Local node
+2) Remote node(s)
+""")
+        choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
+        if choice == "1":
+            logging.info("Installing a Bacalhau node locally...")
+            run_ansible_playbook("bacalhau-node.yml", args, inventory="localhost")
+        elif choice == "2":
+            logging.info("Installing Bacalhau node(s) remotely...")
+            logging.warning("This is under construction 🚧")
+            logging.warning("Mind the dust, it's pretty experimental.")
+            # If the user specified an inventory file, check if we can find it in the working directory.
+            if args.inventory and not os.path.isabs(args.inventory):
+                # Attempt to find the inventory file in the current working directory
+                if os.path.exists(os.getcwd() + "/" + args.inventory):
+                    args.inventory = os.getcwd() + "/" + args.inventory
+                else: 
+                    logging.error("Could not find the specified inventory file. Please try again.")
+                logging.error("You must specify an absolute path to the inventory file with the --inventory flag to use this feature.")
+                logging.error("Please use an absolute path instead and try again. Exiting...")
+                sys.exit(1)
+            # If the user did not specify an inventory file, ask them for one.
+            elif not args.inventory:
+                while True:
+                    if not args.inventory:
+                        logging.info("What inventory file would you like to use?")
+                        args.inventory = input("Enter the name of or a path to the inventory file: ")
+                    if args.inventory and not os.path.isabs(args.inventory):
+                        # Attempt to find the inventory file in the current working directory
+                        if os.path.exists(os.getcwd() + "/" + args.inventory):
+                            args.inventory = os.getcwd() + "/" + args.inventory
+                        else: 
+                            logging.error("Could not find the specified inventory file. Please try again.")
+                            # Clear the inventory argument so we can ask the user for it again.
+                            args.inventory = ""
+                    else:
+                        break
+                logging.info("Using inventory file: " + args.inventory)
+                install_local_node = input("Would you also like to install the Bacalhau client on the machine running BacBoot? (y/n) ")
+                get_and_check_playbook(args)
+                logging.info("We'll now run the playbook. Thanks for being patient with us! 🙏")
+                if install_local_node == "y":
+                    logging.info("Installing the Bacalhau client on the machine running BacBoot...")
+                    run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
+                logging.info("")
+                run_ansible_playbook("bacalhau-node.yml", args, inventory=args.inventory)
+            return_to_menu()
+        elif choice == "q":
+            logging.error("You chose not to do anything. Returning to the main menu...")
+            args.install = None
+            return_to_menu()
+        else: 
+            logging.error("Invalid input. Please try again.")
+            begin_questionnaire(args)
+    elif choice == "q":
+        logging.error("You chose not to do anything. Returning to the main menu...")
+        args.install = None
+        return_to_menu()
+    else:
+        logging.error("Invalid input. Please try again.")
+        begin_questionnaire(args)
+
+
+# Ansible automation
+def run_ansible_playbook(playbook, args, inventory, extraopts=None):
     # Run ansible-galaxy install -r requirements.yml
     if playbook == "bacalhau-client.yml":
-        logging.info("We're running the simple Bacalhau playbook, so we scan skip requirements.")
-    elif playbook == "bacalhau-node.yml":
+        # We don't need to do anything here as the client does not require any Ansible roles or collections.
+        # TODO (bug): Exception is remote nodes, we should handle that case.
+        pass
+    if playbook == "bacalhau-node.yml":
+        logging.info("First, we'll run ansible-galaxy and install any required modules...")
         if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
             logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
             return_to_menu()
@@ -305,18 +335,18 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
     logging.info("Now, let's run the playbook!")
     logging.info("We'll run it with the following command:")
     logging.info("ansible-playbook -i " + final_inventory_path + " /tmp/bacalhau-ansible/" + playbook)
-    logging.info("Before we run this playbook, are you connecting as root or have passwordless sudo on the remote machine? If not, we'll run with --ask-become-pass mode turned on.")
-    logging.info("If you're not sure, just hit enter and we'll ask you.")
     if args.unattended:
         # We are running unattended, so we'll assume the user doesn't want to run with --ask-become-pass if they haven't explicitly specified that.
         if not args.ask_become_pass:
             logging.info("You're running in unattended mode, so we'll assume you do not want to run Ansible using --ask-become-pass.")
-            logging.info("If you want to run it with --ask-become-pass, please run it again and add --ask-become-pass.")
+            logging.info("If you want to run it with --ask-become-pass, please run BacBoot again and add --ask-become-pass.")
         else:
             logging.info("You're running in unattended mode, but you have set --ask-become-pass")
             logging.info("When prompted, enter your become/sudo password, and we'll continue in fully unattended mode from there if possible.")
     # If are not in unattended mode, ask the user if they want to run with --ask-become-pass mode turned on.
     else:
+        logging.info("Before we run this playbook, are you connecting as root or have passwordless sudo on the remote machine? If not, we'll run with --ask-become-pass mode turned on.")
+        logging.info("If you're not sure, just hit enter and we'll ask you.")
         while True:
             choice = input("Enter 'y' to run with --ask-become-pass, or enter 'n' to run without: ")
             if choice == "y":
@@ -350,6 +380,7 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
     if args.unattended:
         # We're running in unattended mode, and we're pretty sure we succeeded, so let us simply continue.
         logging.info("We believe we ran that playbook successfully. Continuing as we are in unattended mode.")
+        time.sleep(3)
         pass
     else:
         logging.info("We believe we ran that playbook successfully. Check it out, then press [ENTER] to continue or any other key to abort.")
@@ -486,12 +517,14 @@ def install_ansible_using_package_manager():
 # Install checkers and verifiers
 def check_if_ansible_installed(args):
     if not args.silent:
-        logging.info("Checking if Ansible is installed...")
+        print("Checking if Ansible is installed... ", end="")
+        # Flush the screen buffer to ensure our message is displayed before the next one.
+        sys.stdout.flush()
     try:
         subprocess.check_output(["which", "ansible-playbook"])
         subprocess.check_output(["which", "ansible"])
         if not args.silent:
-            logging.info("Ansible is installed.")
+            logging.info("found Ansible.")
         return True
     except subprocess.CalledProcessError:
         if not args.silent:
