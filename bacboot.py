@@ -125,12 +125,15 @@ def display_menu(options, prompt_format='numeric', default_choice=None):
 
         elif choice == '' and default_choice is not None:
             logging.debug(f"User chose default option {choice_range[default_choice]}.")
+            logging.info("")
             return default_choice
         elif prompt_format == 'numeric' and choice.isdigit() and int(choice) in choice_range:
             logging.debug(f"User chose option {choice}.")
+            logging.info("")
             return int(choice) - 1  # Convert to 0-indexed list index
         elif prompt_format == 'alpha' and choice in choice_range:
             logging.debug(f"User chose option {choice}.")
+            logging.info("")
             return choice_range.index(choice)
         else:
             logging.error("Invalid choice. Please try again.")
@@ -169,8 +172,13 @@ def return_to_menu():
 
 # Main actions
 def install_bacalhau():
-    # Display the menu for selecting what to install
-    bacalhau_install_menu()
+    if not args.unattended:
+        # Display the menu for selecting what to install
+        bacalhau_install_menu()
+    else:
+        # Install in unattended mode
+        logging.info("Installing Bacalhau in unattended mode...")
+        logging.info("This function is unimplemented. Please check back later!")
 
 def verify_bacalhau():
     # Verify whether Bacalhau is installed correctly
@@ -186,8 +194,7 @@ def check_system_supported():
     logging.info("This function is unimplemented. Please check back later!")
 
 def uninstall_bacalhau():
-    logging.info("Let's uninstall Bacalhau. Whether you're done using it, or you just want to remove it, we can help you do that.")
-    logging.info("We're happy you chose to try it out either way! 🤗")
+    print_goodbye_screen()
     logging.info("This function is unimplemented. Please check back later!")
 
 # Menus
@@ -225,11 +232,55 @@ def bacalhau_install_menu():
         1: install_bacalhau_with_ansible,
         2: install_bacalhau_with_docker,
         3: install_bacalhau_in_the_cloud,
-        4: install_bacalhau_in_the_cloud_with_terraform
+        4: install_bacalhau_in_the_cloud_terraform
     }
     bacalhau_install_menu_choices.get(int(bacalhau_install_menu_choice) + 1)()
 
-# Intro screen
+def bacalhau_what_to_install_menu():
+    logging.info("Let's get started! 🚀")
+    logging.info("")
+    log_wrapped("First, we need to know what you want to do. Do you want to install a node, or just the Bacalhau client/CLI?")
+    logging.info("")
+    logging.info("(If you are upgrading Bacalhau, you can just run this install step again to upgrade automatically!)")
+    logging.info("")
+    # TODO (feat): Allow installing the bacalhau client on multiple machines without deploying nodes
+    bacalhau_what_to_install_menu_options = [
+        "Install Bacalhau client (default)",
+        "Install Bacalhau client and setup Bacalhau node(s)"
+    ]
+    bacalhau_what_to_install_menu_choice = display_menu(bacalhau_what_to_install_menu_options, default_choice=0)
+    bacalhau_what_to_install_menu_choices = {
+        1: install_bacalhau_client_ansible,
+        2: install_bacalhau_node_ansible
+    }
+    # Ask the user if they want to deploy remotely or locally
+    remote_or_local = bacalhau_local_or_remote_menu()
+
+    # Pass the user to the installer for the choice they made earlier
+    # and pass remote_or_local value to the installer.
+    bacalhau_what_to_install_menu_choices.get(int(bacalhau_what_to_install_menu_choice) + 1)(remote_or_local)
+
+def bacalhau_local_or_remote_menu():
+    # Reset remote_or_local in case it is currently set.
+    remote_or_local = None
+    logging.info("Are you installing Bacalhau on a local machine, or one or more remote machines (or both)?")
+    logging.info("")
+    bacalhau_local_or_remote_menu_options = [
+        "Local machine (default)",
+        "Remote machine(s)",
+        "Both local machine and remote machine(s)"
+    ]
+    bacalhau_local_or_remote_menu_choice = display_menu(bacalhau_local_or_remote_menu_options, default_choice=0)
+    bacalhau_local_or_remote_menu_choices = {
+        1: lambda: "local",
+        2: lambda: "remote",
+        3: lambda: "both"
+    }
+    remote_or_local = bacalhau_local_or_remote_menu_choices[bacalhau_local_or_remote_menu_choice + 1]()
+    print("Remote or local: " + remote_or_local)
+    return remote_or_local
+
+# Information screens
 def print_splash_screen():
     logging.info(r"""
   _                     _ _                 
@@ -251,6 +302,15 @@ def print_splash_screen():
     logging.info("")
     log_wrapped("Some menus will display (default) next to a particular option. Simply hitting [ENTER] will choose that option automatically.")
     logging.info("")
+
+def print_goodbye_screen():
+    logging.info("Let's uninstall Bacalhau. Whether you're done using it, or you just want to remove it, we can help you do that.")
+    logging.info("We're happy you chose to try it out either way! 🤗")
+
+def print_ansible_explanation():
+    logging.info("Awesome, let's get started!")
+    logging.info("First, we need to install Ansible. This is a one-time thing, and we'll remove it after we're done if you want us to.")
+    logging.info("We may also need to install a few other things, like Python 3 and pip3. You probably already have them installed!")
 
 # Questionnaire
 def begin_questionnaire(args):
@@ -357,7 +417,6 @@ def begin_questionnaire(args):
 
 # Ansible automation
 def run_ansible_playbook(playbook, args, inventory, extraopts=None):
-    print("Extraopts provided", str(extraopts))
     logging.info("First, let's make sure we have a copy of the Ansible playbook for Bacalhau.")
     logging.info("We'll clone the repository from GitHub if we don't already have it.")
     logging.info("To keep things clean, we'll save the playbook to /tmp/bacalhau-ansible.")
@@ -533,31 +592,78 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
     # TODO (bug): If we remove Ansible, we should remove the playbook too!
 
 # Advanced installers
-def install_bacalhau_with_ansible(args):
-    if not args.silent:
-        logging.info("Awesome, let's get started!")
-        logging.info("First, we need to install Ansible. This is a one-time thing, and we'll remove it after we're done if you want us to.")
-        logging.info("We'll also need to install a few other things, like Python 3 and pip3. You probably already have them installed!")
-        logging.info("")
-        is_ansible_installed = check_if_ansible_installed(args)
-        if is_ansible_installed:
-            logging.info("We detected an existing Ansible installation. You're ready to rock already! 🎸🪨")
-            begin_questionnaire(args)
-        else:
-            logging.warning("We didn't detect an existing Ansible installation. Let's install it now.")
-            install_ansible(args)
-            logging.info("Awesome, Ansible was installed successfully! Let's rock! 🎸🪨")
-            begin_questionnaire(args)
-        # We presumably succeeded, so let's remove Ansible if the user wants us to.
-        # TODO (feat): Implement post-installation removal of Ansible.
+def install_ansible():
+    # Check if Ansible is already installed
+    is_ansible_installed = check_if_ansible_installed()
+
+    if not is_ansible_installed:
+        # Install any required packages
+        print_ansible_explanation()
     else:
-        # We are running in silent mode, simply install Ansible and pip3 if needed.
-        is_ansible_installed = check_if_ansible_installed(args)
-        if is_ansible_installed:
-            begin_questionnaire(args)
-        else:
-            install_ansible(args)
-            begin_questionnaire(args)
+        logging.info("We detected an existing Ansible installation. You're ready to rock already! 🎸🪨")
+        logging.info("")
+
+    #     is_ansible_installed = check_if_ansible_installed(args)
+    #     if is_ansible_installed:
+    #         logging.info("We detected an existing Ansible installation. You're ready to rock already! 🎸🪨")
+    #         begin_questionnaire(args)
+    #     else:
+    #         logging.warning("We didn't detect an existing Ansible installation. Let's install it now.")
+    #         install_ansible(args)
+    #         logging.info("Awesome, Ansible was installed successfully! Let's rock! 🎸🪨")
+    #         begin_questionnaire(args)
+    #     # We presumably succeeded, so let's remove Ansible if the user wants us to.
+    #     # TODO (feat): Implement post-installation removal of Ansible.
+    # else:
+    #     # We are running in silent mode, simply install Ansible and pip3 if needed.
+    #     is_ansible_installed = check_if_ansible_installed(args)
+    #     if is_ansible_installed:
+    #         begin_questionnaire(args)
+    #     else:
+    #         install_ansible(args)
+    #         begin_questionnaire(args)
+
+def install_bacalhau_client_ansible():
+    
+    logging.error("TODO: Run the Ansible playbook for just the client here")
+    return_to_menu()
+
+def install_bacalhau_node_ansible():
+    logging.error("TODO: Run the Ansible playbook for just the client here")
+    return_to_menu()
+
+def install_bacalhau_with_ansible():
+    # Install Ansible and pip3 if needed
+    install_ansible()
+
+    # Display the what to install menu
+    bacalhau_what_to_install_menu()
+
+    # print(args)
+    # if not args.silent:
+    #     logging.info("Awesome, let's get started!")
+    #     logging.info("First, we need to install Ansible. This is a one-time thing, and we'll remove it after we're done if you want us to.")
+    #     logging.info("We'll also need to install a few other things, like Python 3 and pip3. You probably already have them installed!")
+    #     logging.info("")
+    #     is_ansible_installed = check_if_ansible_installed(args)
+    #     if is_ansible_installed:
+    #         logging.info("We detected an existing Ansible installation. You're ready to rock already! 🎸🪨")
+    #         begin_questionnaire(args)
+    #     else:
+    #         logging.warning("We didn't detect an existing Ansible installation. Let's install it now.")
+    #         install_ansible(args)
+    #         logging.info("Awesome, Ansible was installed successfully! Let's rock! 🎸🪨")
+    #         begin_questionnaire(args)
+    #     # We presumably succeeded, so let's remove Ansible if the user wants us to.
+    #     # TODO (feat): Implement post-installation removal of Ansible.
+    # else:
+    #     # We are running in silent mode, simply install Ansible and pip3 if needed.
+    #     is_ansible_installed = check_if_ansible_installed(args)
+    #     if is_ansible_installed:
+    #         begin_questionnaire(args)
+    #     else:
+    #         install_ansible(args)
+    #         begin_questionnaire(args)
 
     logging.info("")
 
@@ -571,7 +677,7 @@ def install_bacalhau_in_the_cloud_terraform():
     logging.error("This functionality is not yet implemented. Please try again later.")
 
 # Basic installers
-def install_ansible(args):
+def install_ansible_old(args):
     logging.info("How would you like to install Ansible?")
     logging.info("""
     1) Install Ansible using pip3
@@ -648,14 +754,16 @@ def install_ansible_using_package_manager():
         return False
 
 # Install checkers and verifiers
-def check_if_ansible_installed(args):
+def check_if_ansible_installed():
     if not args.silent:
-        logging.info("Checking if Ansible is installed...")
+        print("Checking if Ansible is installed... ", end="")
+        # Flush buffers to make sure the above print statement is printed before the next one
+        sys.stdout.flush()
     try:
         subprocess.check_output(["which", "ansible-playbook"])
         subprocess.check_output(["which", "ansible"])
         if not args.silent:
-            logging.info("Ansible is installed.")
+            logging.info("found an Ansible installation.")
         return True
     except subprocess.CalledProcessError:
         if not args.silent:
@@ -921,7 +1029,13 @@ def main():
         main_menu()
 
     # If we are in unattended mode, we need to make sure we have actions to take.
-
+    elif args.unattended:
+        if args.install is None and args.uninstall is None and args.verify is None:
+            logging.error("No actions specified. Please specify an action to take in unattended mode.")
+            sys.exit(1)
+        # Choose an action based on the arguments passed in.
+        if args.install:
+            logging.error("DEBUG: Not actually installing yet.")
 
 
     while True:
@@ -937,7 +1051,7 @@ def main():
             pass
         else:
             # Print the intro screen. Does nothing in silent modes.
-            print_intro_screen()
+            #print_intro_screen()
             # Prompt the user for input if we're not running in unattended mode.
             choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-5, q): ").strip()
 
