@@ -314,99 +314,6 @@ def print_ansible_explanation():
     logging.info("First, we need to install Ansible. This is a one-time thing, and we'll remove it after we're done if you want us to.")
     logging.info("We may also need to install a few other things, like Python 3 and pip3. You probably already have them installed!")
 
-# Questionnaire
-def begin_questionnaire(args):
-    # We now know we have Ansible available to us, so let's gather information from the user about what they want to do.
-    # Check if we're running in silent mode first
-    if not args.silent:
-        logging.info("Let's get started! 🚀")
-        logging.info("")
-        log_wrapped("First, we need to know what you want to do. Do you want to install just the Bacalhau client, or both Bacalhau and a node?")
-        logging.info("")
-        logging.info("(If you are upgrading Bacalhau, you can just run this install step and it will upgrade automatically!)")
-        logging.info("")
-        # TODO (feat): Allow installing the bacalhau client on multiple machines without deploying nodes
-        logging.info("""1) Install the Bacalhau client locally
-2) Install the Bacalhau client and setup Bacalhau node(s)
-""")
-    if args.unattended:
-        choice = "client"
-    else:
-        choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
-    # User wants to install just the client.
-    if choice == "1" or choice == "client":
-        if not args.silent:
-            logging.info("Installing the Bacalhau client...")
-        # If we know we have a specific version already, or the user is running in unattended mode, don't bother printing the related help text and just jump in.
-        if args.version or args.unattended:
-            if args.version:
-                version = args.version
-            if args.unattended:
-                version = ""
-        else:
-            logging.info("We don't really need to know anything to proceed, unless you want to install a specific version of Bacalhau!")
-            logging.info("Press [ENTER] to proceed, or enter a version number to install a specific version of Bacalhau.")
-            logging.info("")
-            logging.info("(If you're confused or don't know what to do here, just press ENTER!)")
-            version = input("Enter a version number or press [ENTER] to proceed: ")
-        if version == "" or version == "latest":
-            # Set bacalhau_version to "latest" as we do not actually have a custom version specified.
-            bacalhau_version = "latest"
-            # Let's make sure that we undo any changes to the overrides file that might have been made previously.
-            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
-            if os.path.exists(overrides_file):
-                # Modify the overrides file to set the bacalhau_version variable
-                command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
-                os.system(command)
-            # Now that we have applied the correct overrides, let's proceed!
-            run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-        else:
-            # Modify /tmp/bacalhau-ansible/vars/overrides.yml to install a specific version of Bacalhau
-            # We'll do that by setting the variable "bacalhau_version" to the version number the user entered.
-            overrides_file = "/tmp/bacalhau-ansible/vars/overrides.yml"
-            bacalhau_version = version.strip()  # Remove any leading/trailing whitespace
-
-            if not os.path.exists(overrides_file):
-                # If the overrides file does not exist, copy overrides.yml.dist to create it
-                command = f"cp /tmp/bacalhau-ansible/vars/overrides.yml.dist {overrides_file}"
-                os.system(command)
-
-            # Modify the overrides file to set the bacalhau_version variable
-            command = f"sed -i.bak -e 's/^bacalhau_version:.*/bacalhau_version: \"{bacalhau_version}\"/' {overrides_file} && rm {overrides_file}.bak"
-            os.system(command)
-            # Now that we have applied the correct overrides, let's proceed!
-            run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-    # User wants to install a node.
-    elif choice == "2":
-        logging.info("Installing Bacalhau node(s)...")
-        logging.info("Are you installing a Bacalhau node locally, or remotely installing node(s)?")
-        logging.info("")
-        logging.info("""1) Local node
-2) Remote node(s)
-""")
-        choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
-        if choice == "1":
-            logging.info("Installing a Bacalhau node locally...")
-            run_ansible_playbook("bacalhau-node.yml", args, inventory="localhost")
-        elif choice == "2" or choice == "q":
-            logging.info("Installing Bacalhau node(s) remotely...")
-            logging.warning("This is under construction 🚧")
-            logging.warning("Mind the dust, it's pretty experimental.")
-            #     install_local_node = input("Would you also like to install the Bacalhau client on the machine running BacBoot? (y/n) ")
-            #     if install_local_node == "y":
-            #         logging.info("Installing the Bacalhau client on the machine running BacBoot...")
-            #         run_ansible_playbook("bacalhau-client.yml", args, inventory="localhost")
-            #     logging.info("")
-            #     run_ansible_playbook("bacalhau-node.yml", args, inventory=args.inventory)
-            # return_to_menu()
-    elif choice == "q":
-        logging.error("You chose not to do anything X. Returning to the main menu...")
-        args.install = None
-        return_to_menu()
-    else:
-        logging.error("Invalid input. Please try again.")
-        begin_questionnaire(args)
-
 # Git automation
 def setup_and_manage_playbook_repo():
 # TODO (refactor) - split this into individual functions, it's very long.
@@ -548,30 +455,6 @@ def run_ansible_playbook(playbook, inventory, extra_vars=None):
     logging.info("We're about to run Ansible! Here's the playbook command for reference:")
     logging.info("")
     logging.info("ansible-playbook -i " + inventory + (" --ask-become-pass" if args.ask_become_pass else "") + " /tmp/bacalhau-ansible/" + playbook)
-
-    # Old code, we probably don't need to run with --ask-become-pass unless the user says we do.
-    # logging.info("Before we run this playbook, are you connecting as root or have passwordless sudo on the remote machine? If not, we'll run with --ask-become-pass mode turned on.")
-    # logging.info("If you're not sure, just hit enter and we'll ask you.")
-    # if args.unattended:
-    #     # We are running unattended, so we'll assume the user doesn't want to run with --ask-become-pass if they haven't explicitly specified that.
-    #     if not args.ask_become_pass:
-    #         logging.info("You're running in unattended mode, so we'll assume you do not want to run Ansible using --ask-become-pass.")
-    #         logging.info("If you want to run it with --ask-become-pass, please run it again and add --ask-become-pass.")
-    #     else:
-    #         logging.info("You're running in unattended mode, but you have set --ask-become-pass")
-    #         logging.info("When prompted, enter your become/sudo password, and we'll continue in fully unattended mode from there if possible.")
-    # # If are not in unattended mode, ask the user if they want to run with --ask-become-pass mode turned on.
-    # else:
-    #     while True:
-    #         choice = input("Enter 'y' to run with --ask-become-pass, or enter 'n' to run without: ")
-    #         if choice == "y":
-    #             args.ask_become_pass = True
-    #         elif choice == "n":
-    #             pass
-    #         else:
-    #             logging.error("Invalid input. Please try again, or enter 'q' to return to the main menu.")
-    #             continue
-    #         break
 
     # Run the playbook
     if subprocess.run(["ansible-playbook", "--become", "--ask-become-pass" if args.ask_become_pass else "", "-i", inventory, "/tmp/bacalhau-ansible/" + playbook], stdout=subprocess.DEVNULL).returncode != 0:
