@@ -648,6 +648,7 @@ def deploy_to_digitalocean():
         sys.exit(1)
     do_region = "sgp1"
     do_size = "s-2vcpu-4gb"
+    do_image = "ubuntu-22-04-x64"
     ssh_public_key = ""
     do_number_of_machines = ""
     ### REMOVE LATER ###
@@ -700,6 +701,7 @@ def deploy_to_digitalocean():
         "do_api_token": do_api_token,
         "do_region": do_region,
         "do_size": do_size,
+        "do_image": do_image,
         "do_number_of_machines": do_number_of_machines,
         "ssh_public_key": ssh_public_key
     })
