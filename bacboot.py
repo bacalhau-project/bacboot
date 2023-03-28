@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import textwrap
 import subprocess
-import select,sys,os,re
+import select,sys,os
 import unicodedata
 import argparse
 import logging
@@ -185,8 +185,8 @@ def begin_questionnaire(args):
 
 
 # Ansible automation
-def run_ansible_playbook(playbook, args, inventory):
-
+def run_ansible_playbook(playbook, args, inventory, extraopts=None):
+    print("Extraopts provided", str(extraopts))
     logging.info("First, let's make sure we have a copy of the Ansible playbook for Bacalhau.")
     logging.info("We'll clone the repository from GitHub if we don't already have it.")
     logging.info("To keep things clean, we'll save the playbook to /tmp/bacalhau-ansible.")
@@ -280,9 +280,23 @@ def run_ansible_playbook(playbook, args, inventory):
         logging.info("We just pulled this copy, so it's probably legitimate. Future versions will check this more thoroughly!")
     logging.info("First, we'll run ansible-galaxy and install any required modules...")
     # Run ansible-galaxy install -r requirements.yml
-    if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
-        logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
-        return_to_menu()
+    if playbook == "bacalhau-client.yml":
+        logging.info("We're running the simple Bacalhau playbook, so we scan skip requirements.")
+    elif playbook == "bacalhau-node.yml":
+        if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
+            logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
+            return_to_menu()
+    elif playbook == "cloud.yml":
+        # Install the cloud-specific requirements.
+        if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements-cloud.yml"], stdout=subprocess.DEVNULL).returncode != 0:
+            logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
+            return_to_menu()
+    else:
+        logging.warning("Couldn't figure out which specific requirements file to load, so using the generic one.")
+        if subprocess.run(["ansible-galaxy", "install", "-r", "/tmp/bacalhau-ansible/requirements.yml"], stdout=subprocess.DEVNULL).returncode != 0:
+            logging.error("We couldn't install the required Ansible roles and collections. Please check your internet connection and try again.")
+            return_to_menu()
+    
     # Set final inventory path based on user input
     if inventory == "localhost":
         final_inventory_path = "/tmp/bacalhau-ansible/inventory"
@@ -623,30 +637,72 @@ def deploy_to_cloud():
     deploy_to_digitalocean()
 
 def deploy_to_digitalocean():
+    ### DEBUG STUFF ###
+    # Fetch my API token from ~/.digitalocean_api_token
+    do_api_token = ""
+    try:
+        with open(os.path.expanduser("~/.digitalocean_api_token"), "r") as f:
+            do_api_token = f.read()
+    except FileNotFoundError:
+        logging.error("Unable to find your DigitalOcean API token. Please create a file called ~/.digitalocean_api_token and paste your API token into it.")
+        sys.exit(1)
+    do_region = "sgp1"
+    do_size = "s-2vcpu-4gb"
+    ssh_public_key = ""
+    do_number_of_machines = ""
+    ### REMOVE LATER ###
+
     logging.info("We'll need to gather some info before we get started.")
-    logging.info("First, we'll need your DigitalOcean API token.")
+    logging.info("First, we'll need your DigitalOcean API Personal Access Token.")
     logging.info("You can find this by going to https://cloud.digitalocean.com/account/api/tokens")
     logging.info("and clicking \"Generate New Token\". Give it a name, and make sure it has the \"Read\" and \"Write\" permissions.")
-    do_api_token = input("Then, copy the token and paste it here: ")
+    while (not do_api_token) or (do_api_token.strip() == ""):
+        do_api_token = input("Then, copy the token and paste it here, or press 'q' to abort: ")
+        if do_api_token.lower() == 'q':
+            sys.exit(1)
     logging.info("Next, we'll need to know what region you want to deploy to.")
     logging.info("You can find a list of regions here: https://developers.digitalocean.com/documentation/v2/#list-all-regions")
     logging.info("Just copy the slug for the region you want to deploy to.")
-    do_region = input("Then, copy the slug and paste it here: ")
+    while (not do_region) or (do_region.strip() == ""):
+        do_region = input("Then, copy the slug and paste it here, or press 'q' to abort: ")
+        if do_region.lower() == 'q':
+            sys.exit(1)
+    while (not do_number_of_machines) or (do_number_of_machines.strip() == ""):
+        do_number_of_machines = input("How many machines do you want to deploy? ")
+        if do_number_of_machines.lower() == 'q' or not do_number_of_machines.isdigit():
+            print("Please enter a number... aborting.")
+            sys.exit(1)
     logging.info("Finally, we'll need to know what size droplet you want to deploy.")
     logging.info("You can find a list of droplet sizes here: https://developers.digitalocean.com/documentation/v2/#list-all-sizes")
     logging.info("Just copy the slug for the size you want to deploy.")
-    do_size = input("Then, copy the slug and paste it here: ")
+    while (not do_api_token) or (do_api_token.strip() == ""):
+        do_size = input("Then, copy the slug and paste it here, or press 'q' to abort: ")
+        if do_size.lower() == 'q':
+            sys.exit(1)
     logging.info("Pick an existing SSH public key to pre-deploy on the machines:")
-    # List .pub file found in ~/.ssh/ and ask the user to pick one
+    # List .pub files found in ~/.ssh/ and ask the user to pick one
     # TODO (feat) (good-first-issue): We should probably support other SSH key locations, like /etc/ssh/ssh_host_rsa_key.pub
-    ssh_key_files = [f for f in os.listdir(os.path.expanduser("~/.ssh/")) if f.endswith(".pub")]
-    for i, key_file in enumerate(ssh_key_files, start=1):
-        logging.info(f"{i}) {key_file}")
-    ssh_key_choice = int(input("Then, enter the number of the key you want to use: "))
-    ssh_key_file = ssh_key_files[ssh_key_choice - 1]
-    print(ssh_key_file)
+    # TODO (feat) (good-first-issue): Check that the key is actually a valid choice
+    while (ssh_public_key is not None and not ssh_public_key) or (ssh_public_key is not None and ssh_public_key.strip() == ""):
+        ssh_dir = os.path.expanduser("~/.ssh/")
+        ssh_public_keys = [os.path.join(ssh_dir, f) for f in os.listdir(ssh_dir) if f.endswith(".pub")]
+        for i, key_file in enumerate(ssh_public_keys, start=1):
+            logging.info(f"{i}) {key_file}")
+        ssh_key_choice = int(input("Then, enter the number of the key you want to use: "))
+        ssh_public_key = ssh_public_keys[ssh_key_choice - 1]
+
+    print("DEBUG " + ssh_public_key)
     logging.info("Okay, we're ready to deploy to DigitalOcean!")
     logging.error("But I'm still in a bad mood, so nope, we won't. Sorry!")
+    logging.info("...I'm just kidding. Let's do it!")
+
+    run_ansible_playbook("cloud.yml", args, inventory="localhost", extraopts={
+        "do_api_token": do_api_token,
+        "do_region": do_region,
+        "do_size": do_size,
+        "do_number_of_machines": do_number_of_machines,
+        "ssh_public_key": ssh_public_key
+    })
 
 # Installation and functionality verification functions
 def verify_client():
@@ -691,6 +747,7 @@ def verify_bacalhau_installation(args):
 
 # Main program loop itself
 def main():
+    global args
     # Load in arguments passed on the command line.
     parser = argparse.ArgumentParser(description="""\
 Bacalhau Bootstrapper
