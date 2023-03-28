@@ -95,7 +95,7 @@ def begin_questionnaire(args):
         logging.info("""1) Install the Bacalhau client locally
 2) Install the Bacalhau client and setup Bacalhau node(s)
 """)
-    if args.unattended:
+    if args.unattended and not args.install == "node":
         choice = "client"
     else:
         choice = input("Enter your choice or enter 'q' to quit without making any further changes: ")
