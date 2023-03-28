@@ -766,6 +766,8 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
     "-c", "--verify", nargs="?", const="client",
     help="Verify Bacalhau components and then exit. If no argument is passed, the client will be checked by default."
     )
+    parser.add_argument("--cloud", help="Specify a cloud to deploy to or manage. If you don't specify a cloud, will use DigitalOcean.", default="do")
+    parser.add_argument("--cloud-region", help="Specify a region to deploy to or manage. Mandatory if --cloud is set.")
     parser.add_argument("--inventory", help="Specify the inventory file to use. If unspecified, will simply default to localhost. Mandatory for remote deployments.")
     parser.add_argument("--user", help="[UNDER CONSTRUCTION] Specify the user to use for remote deployments. If unspecified, will default to the current user.")
     parser.add_argument("-a", "--unattended", help="Run in unattended mode, and make reasonable decisions withfout user input", action="store_true")
