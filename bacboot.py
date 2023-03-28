@@ -17,7 +17,125 @@ EMOJI_CHARS = "".join([chr(c) for r in EMOJI_RANGES for c in range(r[0], r[1]+1)
 # We are not "re-looping" unless we enter the main loop twice
 relooping = False
 
+# Load command line arguments
+def parse_args():
+    # Load in arguments passed on the command line.
+    parser = argparse.ArgumentParser(description="""\
+Bacalhau Bootstrapper
+    ><(((º>
+A tool for installing, managing and maintaining Bacalhau from the edge to the cloud.
+""", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-i", "--install", "--upgrade", nargs="?", const="client", default=None,
+        help="Install or upgrade Bacalhau. In silent mode, will assume you want to install the client if you don't specify component(s) to install."
+    )
+    parser.add_argument("-u", "--uninstall", metavar="COMPONENT", nargs="?", const="all", default=None,
+        help="Uninstall Bacalhau. In silent mode, will assume you want to uninstall the client if you don't specify component(s) to uninstall."
+    )
+    parser.add_argument(
+    "-c", "--verify", nargs="?", const="client",
+    help="Verify Bacalhau components and then exit. If no argument is passed, the client will be checked by default."
+    )
+    parser.add_argument("--inventory", help="Specify the inventory file to use. If unspecified, will simply default to localhost. Mandatory for remote deployments.")
+    parser.add_argument("--user", help="[UNDER CONSTRUCTION] Specify the user to use for remote deployments. If unspecified, will default to the current user.")
+    parser.add_argument("-a", "--unattended", help="Run in unattended mode, and make reasonable decisions withfout user input", action="store_true")
+    parser.add_argument("-s", "--silent", help="Run in silent mode, suppressing all output except warnings, errors, and a report at the end. Implies --unattended.", action="store_true")
+    parser.add_argument("--truly-silent", help="Run in truly silent mode, only outputting errors or prompts needed for authentication such as sudo. Implies --silent.", action="store_true")
+    parser.add_argument("--dry-run", help="[UNIMPLEMENTED] Dry-run mode. Note that this WILL install Ansible on the machine running BacBoot. Can be combined with --remove-ansible.")
+    parser.add_argument("-m", "--method", help="Specify the installation method to use. Default: Ansible.", choices=["ansible", "cloud", "docker", "direct"])
+    parser.add_argument("--skip-verification", help="Always skip verification of the installed or upgraded components.", action="store_true")
+    parser.add_argument("--ask-become-pass", help="Automatically ask for the sudo password when running Ansible.", action="store_true")
+    parser.add_argument("--version", help="Specify a version of Bacalhau to install. Default: latest.", default="latest")
+    parser.add_argument("--remove-pip3", help="Remove pip3 from the system", action="store_true")
+    parser.add_argument("--remove-docker", help="Remove Docker from the system", action="store_true")
+    parser.add_argument("--remove-ansible", help="Remove Ansible from the system, after doing any actions that require Ansible.", action="store_true")
+    parser.add_argument("--experimental", help="Void the warranty and use experimental features. DO NOT USE THIS unless you know what you are doing!", action="store_true")
+    parser.add_argument("--debug", help="Enable debug logging. Used mainly for development.", action="store_true")
+
+    args = parser.parse_args()
+    return args
+
+# Setup logging
+def setup_logging():
+    # Set implied arguments and logging levels.
+    # Configure the logging level and format
+    if args.truly_silent:
+        args.silent = True
+        logging.basicConfig(level=logging.ERROR, format='%(message)s')
+    if args.silent:
+        args.unattended = True
+        # Avoid overriding the truly silent mode's logging settings
+        if not args.truly_silent:
+            logging.basicConfig(level=logging.WARNING, format='%(message)s')
+    if args.debug:
+        # Force silence to off, since we're enabling debugging.
+        args.silent = False
+        # Hidden little treat.
+        if args.silent:
+            print("Ain't you clever! Unfortunately I can't manage to be silent and verbose at the same time.")
+        # Enable debug level logging
+        logging.basicConfig(level=logging.DEBUG, format='%(message)s')
+    else:
+        # By default, show all INFO and above messages
+        logging.basicConfig(level=logging.INFO, format='%(message)s')
+
 # Helper functions
+def display_menu(options, prompt_format='numeric', default_choice=None):
+    """
+    Displays a menu of options and prompts the user to select a valid option.
+
+    Parameters:
+    options (list): A list of strings representing the menu options.
+    prompt_format (str): Either 'numeric' or 'alpha', indicating whether the prompt should be numeric or alphabetical.
+    default_choice (int or str): The index or letter of the default choice (0-indexed for numeric, a-indexed for alphabetical). If None, there is no default choice.
+
+    Returns:
+    The index of the selected option in the options list (0-indexed), or -1 if the user selects 'q' to quit.
+    """
+    # Display a different prompt based on what format the prompt takes.
+    if prompt_format == 'numeric':
+        prompt = f"Enter your choice or enter 'q' to quit without making any further changes (1-{len(options)}, q)"
+        if default_choice is not None:
+            prompt += f" [default: {default_choice+1}]: "
+        else:
+            prompt += ": "
+        choice_range = range(1, len(options) + 1)
+    elif prompt_format == 'alpha':
+        prompt = "Enter your choice or enter 'q' to quit without making any further changes"
+        if default_choice is not None:
+            default_letter = chr(ord('a') + default_choice)
+            prompt += f" [default: {default_letter}]: "
+        else:
+            prompt += ": "
+        choice_range = [chr(i) for i in range(ord('a'), ord('a') + len(options))]
+
+    while True:
+        logging.info("What would you like to do?")
+        logging.info("")
+        for i, option in enumerate(options):
+            logging.info(f"{choice_range[i]}) {option}")
+
+        logging.info("")
+
+        choice = input(prompt).strip().lower()
+
+        if choice == 'q':
+            logging.warning("Quitting...")
+            # Gracefully exit the program, but return an error as we didn't do anything useful.
+            sys.exit(1)
+
+        elif choice == '' and default_choice is not None:
+            logging.debug(f"User chose default option {choice_range[default_choice]}.")
+            return default_choice
+        elif prompt_format == 'numeric' and choice.isdigit() and int(choice) in choice_range:
+            logging.debug(f"User chose option {choice}.")
+            return int(choice) - 1  # Convert to 0-indexed list index
+        elif prompt_format == 'alpha' and choice in choice_range:
+            logging.debug(f"User chose option {choice}.")
+            return choice_range.index(choice)
+        else:
+            logging.error("Invalid choice. Please try again.")
+            logging.info("")  # Add blank line for readability in console output
+
 def log_wrapped(text, level="info"):
     wrapper = textwrap.TextWrapper(width=80)
     wrapped_text = wrapper.fill(text).strip()
@@ -31,7 +149,6 @@ def has_emoji(line):
         if "Emoji" in unicodedata.name(char, ""):
             return True
     return False
-
 
 def return_to_menu():
     # Wait up to 3 seconds for the user to enter any key.
@@ -50,9 +167,70 @@ def return_to_menu():
         logging.info("")
         main()
 
+# Main actions
+def install_bacalhau():
+    # Display the menu for selecting what to install
+    bacalhau_install_menu()
+
+def verify_bacalhau():
+    # Verify whether Bacalhau is installed correctly
+    logging.info("Verifying Bacalhau installation...")
+    logging.info("This function is unimplemented. Please check back later!")
+
+def info_about_bacboot():
+    # Display information about BacBoot
+    logging.info("This function is unimplemented. Please check back later!")
+
+def check_system_supported():
+    # Check if the system is supported by BacBoot
+    logging.info("This function is unimplemented. Please check back later!")
+
+def uninstall_bacalhau():
+    logging.info("Let's uninstall Bacalhau. Whether you're done using it, or you just want to remove it, we can help you do that.")
+    logging.info("We're happy you chose to try it out either way! 🤗")
+    logging.info("This function is unimplemented. Please check back later!")
+
+# Menus
+def main_menu():
+    main_menu_options = [
+        "Install or upgrade Bacalhau (default)",
+        "🚧 Verify an installation of Bacalhau",
+        "🚧 Find out more about BacBoot",
+        "🚧 Check if my system(s) are supported by BacBoot",
+        "Uninstall Bacalhau"
+    ]
+    main_menu_choice = display_menu(main_menu_options, default_choice=0)
+    main_menu_choices = {
+        1: install_bacalhau,
+        2: verify_bacalhau,
+        3: info_about_bacboot,
+        4: check_system_supported,
+        5: uninstall_bacalhau
+    }
+    main_menu_choices.get(int(main_menu_choice) + 1)()
+
+def bacalhau_install_menu():
+    logging.info("In order to install Bacalhau safely and cleanly, we're going to need a few prerequisites.")
+    log_wrapped("BacBoot is primarily powered by Ansible, but it's also good for deploying Bacalhau on Docker, driving Terraform or deploying in the cloud. What would you like to do?")
+    logging.info("")
+    log_wrapped("Also, this installer can even remove Ansible afterwards if you don't want to have it long term!")
+    bacalhau_install_menu_options = [
+        "Install Bacalhau using Ansible",
+        "🚧 Install Bacalhau using Docker",
+        "🚧 Install Bacalhau in the cloud using Ansible",
+        "🚧 Install Bacalhau in the cloud using Terraform + Ansible"
+    ]
+    bacalhau_install_menu_choice = display_menu(bacalhau_install_menu_options, default_choice=0)
+    bacalhau_install_menu_choices = {
+        1: install_bacalhau_with_ansible,
+        2: install_bacalhau_with_docker,
+        3: install_bacalhau_in_the_cloud,
+        4: install_bacalhau_in_the_cloud_with_terraform
+    }
+    bacalhau_install_menu_choices.get(int(bacalhau_install_menu_choice) + 1)()
 
 # Intro screen
-def print_intro_screen():
+def print_splash_screen():
     logging.info(r"""
   _                     _ _                 
  | |                   | | |                
@@ -70,15 +248,9 @@ def print_intro_screen():
     logging.info("\nWelcome to BacBoot! 🤖")
     logging.info("")
     log_wrapped("This is an installer/bootstrapper for deploying Bacalhau on a single computer, group of computers or across diverse infrastructure. Whether you just want to install the Bacalhau client, or you want to install Bacalhau node(s) or clusters, BacBoot is the fastest and easiest path to doing so.")
-    logging.info("\nWhat would you like to do?")
-    logging.info("""
-1) Install or upgrade Bacalhau
-2) Verify an installation of Bacalhau
-3) Find out more about BacBoot
-4) Check if my system(s) are supported by BacBoot (UNIMPLEMENTED)
-5) Uninstall Bacalhau
-""")
-
+    logging.info("")
+    log_wrapped("Some menus will display (default) next to a particular option. Simply hitting [ENTER] will choose that option automatically.")
+    logging.info("")
 
 # Questionnaire
 def begin_questionnaire(args):
@@ -182,7 +354,6 @@ def begin_questionnaire(args):
     else:
         logging.error("Invalid input. Please try again.")
         begin_questionnaire(args)
-
 
 # Ansible automation
 def run_ansible_playbook(playbook, args, inventory, extraopts=None):
@@ -361,22 +532,8 @@ def run_ansible_playbook(playbook, args, inventory, extraopts=None):
             return_to_menu()
     # TODO (bug): If we remove Ansible, we should remove the playbook too!
 
-def print_install_options():
-    logging.info("In order to install Bacalhau safely and cleanly, we're going to need a few prerequisites.")
-    log_wrapped("BacBoot is primarily powered by Ansible, but it's also good for deploying Bacalhau on Docker, driving Terraform or deploying in the cloud. What would you like to do?")
-    logging.info("")
-    log_wrapped("(Whatever you choose, we'll let you pick between deployment modes - just the client, just a node, both, or some other options too!)")
-    logging.info("")
-    log_wrapped("Also, this installer can even remove Ansible afterwards if you don't want to have it long term!")
-    logging.info("""
-1) Install Bacalhau using Ansible
-2) Install Bacalhau using Docker (UNIMPLEMENTED)
-3) Install Bacalhau in the cloud using Ansible (UNIMPLEMENTED)
-4) Install Bacalhau in the cloud using Terraform + Ansible (UNIMPLEMENTED)
-""")
-
 # Advanced installers
-def install_using_ansible(args):
+def install_bacalhau_with_ansible(args):
     if not args.silent:
         logging.info("Awesome, let's get started!")
         logging.info("First, we need to install Ansible. This is a one-time thing, and we'll remove it after we're done if you want us to.")
@@ -403,6 +560,15 @@ def install_using_ansible(args):
             begin_questionnaire(args)
 
     logging.info("")
+
+def install_bacalhau_with_docker():
+    logging.error("This functionality is not yet implemented. Please try again later.")
+
+def install_bacalhau_in_the_cloud():
+    logging.error("This functionality is not yet implemented. Please try again later.")
+
+def install_bacalhau_in_the_cloud_terraform():
+    logging.error("This functionality is not yet implemented. Please try again later.")
 
 # Basic installers
 def install_ansible(args):
@@ -445,7 +611,6 @@ def install_ansible(args):
         logging.info("We're unfortunately (currently) unable to continue without installing Ansible. Feel free to change your mind!")
         return_to_menu()
 
-
 def install_pip3():
     logging.info("Installing pip3...")
     try:
@@ -455,7 +620,6 @@ def install_pip3():
     except subprocess.CalledProcessError:
         logging.error("Unable to install pip3. Please try again, or ask us for help!")
         return_to_menu()
-
 
 def install_ansible_using_pip3():
     logging.info("Installing Ansible using pip3...")
@@ -509,7 +673,6 @@ def check_if_docker_installed(args):
         logging.warning("Docker is not installed.")
         return False
 
-
 def check_if_pip3_installed(args):
     logging.info("Checking if pip3 is installed...")
     try:
@@ -520,13 +683,7 @@ def check_if_pip3_installed(args):
         logging.warning("pip3 is not installed.")
         return False
 
-
 # Uninstallers
-def uninstall_bacalhau(args):
-    logging.info("Let's uninstall Bacalhau. Whether you're done using it, or you just want to remove it, we can help you do that.")
-    logging.info("We're happy you chose to try it out either way! 🤗")
-    logging.error("(UNIMPLEMENTED) Not actually uninstalling Bacalhau yet")
-
 def uninstall_ansible(args):
     logging.info("Uninstalling Ansible...")
     logging.info("This is an early version of the script, so we just want to check - how did we originally install Ansible?")
@@ -584,7 +741,6 @@ def uninstall_ansible_using_package_manager():
     else:
         logging.error("An error occurred during uninstallation. Ansible may still be installed.")
         return False
-
 
 def uninstall_docker():
     logging.info("Uninstalling Docker...")
@@ -750,53 +906,23 @@ def verify_bacalhau_installation(args):
 # Main program loop itself
 def main():
     global args
-    # Load in arguments passed on the command line.
-    parser = argparse.ArgumentParser(description="""\
-Bacalhau Bootstrapper
-    ><(((º>
-A tool for installing, managing and maintaining Bacalhau from the edge to the cloud.
-""", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("-i", "--install", "--upgrade", nargs="?", const="client", default=None,
-        help="Install or upgrade Bacalhau. In silent mode, will assume you want to install the client if you don't specify component(s) to install."
-    )
-    parser.add_argument("-u", "--uninstall", metavar="COMPONENT", nargs="?", const="all", default=None,
-        help="Uninstall Bacalhau. In silent mode, will assume you want to uninstall the client if you don't specify component(s) to uninstall."
-    )
-    parser.add_argument(
-    "-c", "--verify", nargs="?", const="client",
-    help="Verify Bacalhau components and then exit. If no argument is passed, the client will be checked by default."
-    )
-    parser.add_argument("--inventory", help="Specify the inventory file to use. If unspecified, will simply default to localhost. Mandatory for remote deployments.")
-    parser.add_argument("--user", help="[UNDER CONSTRUCTION] Specify the user to use for remote deployments. If unspecified, will default to the current user.")
-    parser.add_argument("-a", "--unattended", help="Run in unattended mode, and make reasonable decisions withfout user input", action="store_true")
-    parser.add_argument("-s", "--silent", help="Run in silent mode, suppressing all output except warnings, errors, and a report at the end. Implies --unattended.", action="store_true")
-    parser.add_argument("--truly-silent", help="Run in truly silent mode, only outputting errors or prompts needed for authentication such as sudo. Implies --silent.", action="store_true")
-    parser.add_argument("--dry-run", help="[UNIMPLEMENTED] Dry-run mode. Note that this WILL install Ansible on the machine running BacBoot. Can be combined with --remove-ansible.")
-    parser.add_argument("-m", "--method", help="Specify the installation method to use. Default: Ansible.", choices=["ansible", "cloud", "docker", "direct"])
-    parser.add_argument("--skip-verification", help="Always skip verification of the installed or upgraded components.", action="store_true")
-    parser.add_argument("--ask-become-pass", help="Automatically ask for the sudo password when running Ansible.", action="store_true")
-    parser.add_argument("--version", help="Specify a version of Bacalhau to install. Default: latest.", default="latest")
-    parser.add_argument("--remove-pip3", help="Remove pip3 from the system", action="store_true")
-    parser.add_argument("--remove-docker", help="Remove Docker from the system", action="store_true")
-    parser.add_argument("--remove-ansible", help="Remove Ansible from the system, after doing any actions that require Ansible.", action="store_true")
-    parser.add_argument("--experimental", help="Void the warranty and use experimental features. DO NOT USE THIS unless you know what you are doing!", action="store_true")
 
-    args = parser.parse_args()
+    # Parse arguments
+    args = parse_args()
+    
+    # Setup logging
+    setup_logging()
 
-    # Set implied arguments and logging levels.
+    # If we are in interactive mode, show the splash screen, then the main menu, then allow for a menu choice.
+    if not args.unattended:
+        # Print the splash screen. Does nothing in silent modes.
+        print_splash_screen()
+        # Display the main menu. Does nothing in silent modes.
+        main_menu()
 
-    # Configure the logging level and format
-    if args.truly_silent:
-        args.silent = True
-        logging.basicConfig(level=logging.ERROR, format='%(message)s')
-    if args.silent:
-        args.unattended = True
-        # Avoid overriding the truly silent mode's logging settings
-        if not args.truly_silent:
-            logging.basicConfig(level=logging.WARNING, format='%(message)s')
-    else:
-        # By default, show all INFO and above messages
-        logging.basicConfig(level=logging.INFO, format='%(message)s')
+    # If we are in unattended mode, we need to make sure we have actions to take.
+
+
 
     while True:
         # Unconditionally define choice, as NoneType by default.
@@ -829,7 +955,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
                     install_choice = "ansible"
             else:
                 # Print the installation options and prompt the user for input.
-                print_install_options()
+                bacalhau_install_menu()
                 install_choice = input("Enter your choice or enter 'q' to quit without making any further changes (1-3, q): ").strip()
 
             if install_choice is not None and install_choice.lower() == 'q':
@@ -838,7 +964,7 @@ A tool for installing, managing and maintaining Bacalhau from the edge to the cl
 
             if install_choice == '1' or install_choice == "ansible":
                 # Call the function to install Bacalhau using Ansible here
-                install_using_ansible(args)
+                install_bacalhau_with_ansible(args)
                 if not args.truly_silent:
                     print("Successfully installed Bacalhau using Ansible.")
             elif install_choice == '2' or install_choice == "docker":
